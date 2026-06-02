@@ -1,0 +1,14 @@
+# Secret files
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+env/
+
+# Docker volumes
+postgres_data/
+
+# OS files
+.DS_Store

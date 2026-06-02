@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ecocharge
+      POSTGRES_USER: ecouser
+      POSTGRES_PASSWORD: ecopass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  django:
+    build: ./django-backend
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./django-backend:/app
+    ports:
+      - "8000:8000"
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+
+  fastapi:
+    build: ./fastapi-service
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    volumes:
+      - ./fastapi-service:/app
+    ports:
+      - "8001:8001"
+    env_file: .env
+
+volumes:
+  postgres_data:
