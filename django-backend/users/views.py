@@ -4,17 +4,19 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.views import TokenRefreshView as SimpleJWTRefreshView
+from drf_spectacular.utils import extend_schema
 from .serializers import RegisterSerializer, UserProfileSerializer
 from .models import CustomUser
 
 
+@extend_schema(tags=['Authentication'])
 class RegisterView(generics.CreateAPIView):
     queryset = CustomUser.objects.all()
     permission_classes = [AllowAny]
     serializer_class = RegisterSerializer
 
 
+@extend_schema(tags=['Authentication'])
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -55,6 +57,7 @@ class LoginView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+@extend_schema(tags=['Authentication'])
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -79,6 +82,7 @@ class LogoutView(APIView):
             )
 
 
+@extend_schema(tags=['Authentication'])
 class UserProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = UserProfileSerializer

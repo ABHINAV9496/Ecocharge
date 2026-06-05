@@ -38,7 +38,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.gis',       
-    'rest_framework',            
+    'rest_framework',  
+    'drf_spectacular',
+    'rest_framework_gis',          
     'corsheaders',               
     'channels',     
     'rest_framework_simplejwt.token_blacklist',             
@@ -151,6 +153,7 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',  
 }
 
 SIMPLE_JWT = {
@@ -161,3 +164,27 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'EcoCharge API',
+    'DESCRIPTION': '''
+        EcoCharge is a full-stack EV trip planning platform.
+        Features include:
+        - JWT Authentication with role-based access
+        - GeoDjango radius-based station search
+        - Real-time IoT slot updates via WebSocket
+        - AI-powered EcoBot trip assistant
+        - ML battery consumption prediction
+    ''',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'TAGS': [
+        {'name': 'Authentication', 'description': 'Register, Login, Logout, Token Refresh'},
+        {'name': 'Stations', 'description': 'Charging station CRUD and radius search'},
+        {'name': 'Slots', 'description': 'Charging slot management'},
+        {'name': 'Bookings', 'description': 'Booking creation and management'},
+        {'name': 'Wallet', 'description': 'Wallet top-up and transactions'},
+        {'name': 'Trips', 'description': 'Trip planning and history'},
+    ],
+}
