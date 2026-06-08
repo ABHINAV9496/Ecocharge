@@ -25,7 +25,7 @@ services:
 
   django:
     build: ./django-backend
-    command: python manage.py runserver 0.0.0.0:8000
+    command: daphne -b 0.0.0.0 -p 8000 core.asgi:application
     volumes:
       - ./django-backend:/app
     ports:
@@ -65,6 +65,33 @@ services:
       - postgres
       - redis
       - django
+
+  mqtt_consumer:
+    build: ./django-backend
+    command: sh -c "PYTHONPATH=/app python stations/mqtt_consumer.py"
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./django-backend:/app
+    env_file: .env
+    depends_on:
+      - postgres
+      - redis
+      - mosquitto
+      - django
+
+  mqtt_publisher:
+    build: ./django-backend
+    command: sh -c "PYTHONPATH=/app python stations/mqtt_publisher.py"
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./django-backend:/app
+    env_file: .env
+    depends_on:
+      - mosquitto
 
 volumes:
   postgres_data:
