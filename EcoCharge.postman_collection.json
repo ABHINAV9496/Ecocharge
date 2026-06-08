@@ -1,0 +1,615 @@
+{
+  "info": {
+    "name": "EcoCharge API",
+    "description": "Complete Postman collection for the EcoCharge EV charging platform.\n\n## Servers\n- **Django Backend** (REST API): `{{base_url}}` (default: http://localhost:8000)\n- **FastAPI Service** (AI): `{{fastapi_url}}` (default: http://localhost:8001)\n\n## Authentication\nAfter login, the `access` token is automatically stored in the `token` variable.\nUse the **Login** request first, or manually set the `token` variable.\nAll protected endpoints send `Authorization: Bearer {{token}}` automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "fastapi_url",
+      "value": "http://localhost:8001",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "station_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "slot_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "booking_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "driver_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "description": "User registration, login, logout, token refresh, and profile management.",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/auth/register/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "register", ""]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"johndoe\",\n  \"email\": \"john@example.com\",\n  \"password\": \"SecurePass123!\",\n  \"password2\": \"SecurePass123!\",\n  \"role\": \"DRIVER\",\n  \"phone_number\": \"+919876543210\",\n  \"car_model\": \"Tesla Model 3\",\n  \"battery_capacity_kwh\": 60.0\n}"
+            },
+            "description": "Register a new user account.\n\n**Roles:** `SUPER_ADMIN`, `STATION_OWNER`, `DRIVER`, `GUEST`"
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('token', json.access);",
+                  "    pm.collectionVariables.set('refresh_token', json.refresh);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/auth/login/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login", ""]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"johndoe\",\n  \"password\": \"SecurePass123!\"\n}"
+            },
+            "description": "Authenticate with username/password.\nReturns JWT access + refresh tokens.\nThe access token is automatically stored in `{{token}}` for subsequent requests."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "logout", ""]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+            },
+            "description": "Logout and blacklist the refresh token."
+          }
+        },
+        {
+          "name": "Token Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var json = pm.response.json();",
+                  "    pm.collectionVariables.set('token', json.access);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/auth/token/refresh/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "token", "refresh", ""]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+            },
+            "description": "Refresh the JWT access token using a valid refresh token."
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/auth/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "profile", ""]
+            },
+            "description": "Get the authenticated user's profile."
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{base_url}}/api/auth/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "profile", ""]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"+919999888777\",\n  \"car_model\": \"Tesla Model Y\",\n  \"battery_capacity_kwh\": 75.0\n}"
+            },
+            "description": "Update the authenticated user's profile."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stations",
+      "description": "CRUD for charging stations and their slots. Station-level endpoints.",
+      "item": [
+        {
+          "name": "List Stations",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/stations/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", ""],
+              "query": [
+                { "key": "lat", "value": "12.9716", "description": "Latitude for geo-radius search (optional)" },
+                { "key": "lng", "value": "77.5946", "description": "Longitude for geo-radius search (optional)" },
+                { "key": "radius", "value": "5", "description": "Search radius in km (default: 5, used with lat/lng)" }
+              ]
+            },
+            "description": "List all charging stations. Optionally filter by geographic location using `lat`, `lng`, and `radius` (km)."
+          }
+        },
+        {
+          "name": "Create Station",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/stations/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", ""]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"EcoCharge Downtown\",\n  \"address\": \"123 Main Street, Bangalore, India\",\n  \"latitude\": 12.9716,\n  \"longitude\": 77.5946,\n  \"amenities\": [\"WiFi\", \"Cafe\", \"Restroom\"],\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "description": "Create a new charging station. Requires `STATION_OWNER` or `SUPER_ADMIN` role."
+          }
+        },
+        {
+          "name": "Get Station",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/stations/{{station_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", "{{station_id}}", ""]
+            },
+            "description": "Get details of a specific station including its slots."
+          }
+        },
+        {
+          "name": "Update Station",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{base_url}}/api/stations/{{station_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", "{{station_id}}", ""]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"EcoCharge Downtown Updated\",\n  \"address\": \"456 Oak Avenue, Bangalore, India\",\n  \"latitude\": 12.9345,\n  \"longitude\": 77.6100,\n  \"amenities\": [\"WiFi\", \"Cafe\", \"Restroom\", \"EV Store\"],\n  \"status\": \"ACTIVE\"\n}"
+            },
+            "description": "Update a station. Only the owner or `SUPER_ADMIN` can update."
+          }
+        },
+        {
+          "name": "Delete Station",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/stations/{{station_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", "{{station_id}}", ""]
+            },
+            "description": "Delete a station. Only the owner or `SUPER_ADMIN` can delete."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Slots",
+      "description": "CRUD for charging slots within a station (nested under `/api/stations/<station_pk>/slots/`).",
+      "item": [
+        {
+          "name": "List Slots",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/stations/{{station_id}}/slots/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", "{{station_id}}", "slots", ""]
+            },
+            "description": "List all charging slots for a given station."
+          }
+        },
+        {
+          "name": "Create Slot",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/stations/{{station_id}}/slots/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", "{{station_id}}", "slots", ""]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slot_type\": \"DC_FAST\",\n  \"status\": \"AVAILABLE\",\n  \"rate_per_kwh\": 12.50,\n  \"off_peak_rate\": 8.00\n}"
+            },
+            "description": "Create a charging slot for a station.\n\n**Slot Types:** `AC_SLOW` (3.3kW), `AC_FAST` (7.4kW), `DC_FAST` (50kW), `DC_ULTRA` (150kW)\n**Statuses:** `AVAILABLE`, `OCCUPIED`, `FAULT`"
+          }
+        },
+        {
+          "name": "Get Slot",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/stations/{{station_id}}/slots/{{slot_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", "{{station_id}}", "slots", "{{slot_id}}", ""]
+            },
+            "description": "Get details of a specific charging slot."
+          }
+        },
+        {
+          "name": "Update Slot",
+          "request": {
+            "method": "PUT",
+            "url": {
+              "raw": "{{base_url}}/api/stations/{{station_id}}/slots/{{slot_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", "{{station_id}}", "slots", "{{slot_id}}", ""]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slot_type\": \"DC_ULTRA\",\n  \"status\": \"MAINTENANCE\",\n  \"rate_per_kwh\": 15.00,\n  \"off_peak_rate\": 10.00\n}"
+            },
+            "description": "Update a slot. Only the station owner or `SUPER_ADMIN` can update."
+          }
+        },
+        {
+          "name": "Delete Slot",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/stations/{{station_id}}/slots/{{slot_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stations", "{{station_id}}", "slots", "{{slot_id}}", ""]
+            },
+            "description": "Delete a slot. Only the station owner or `SUPER_ADMIN` can delete."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "description": "Booking reservations for charging slots. Requires authentication (driver role).",
+      "item": [
+        {
+          "name": "List Bookings",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/bookings/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "bookings", ""]
+            },
+            "description": "List bookings. Role-filtered:\n- **DRIVER:** own bookings\n- **STATION_OWNER:** bookings on their stations\n- **SUPER_ADMIN:** all bookings"
+          }
+        },
+        {
+          "name": "Create Booking",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/bookings/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "bookings", ""]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slot\": {{slot_id}},\n  \"start_time\": \"2026-06-08T14:00:00Z\",\n  \"end_time\": \"2026-06-08T15:30:00Z\"\n}"
+            },
+            "description": "Create a new booking. Requires `DRIVER` or `GUEST` role.\n\nThe system will:\n1. Calculate estimated cost based on slot rate\n2. Check wallet balance\n3. Lock the slot atomically\n4. Deduct wallet amount\n5. Trigger confirmation in background"
+          }
+        },
+        {
+          "name": "Get Booking",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/bookings/{{booking_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "bookings", "{{booking_id}}", ""]
+            },
+            "description": "Get details of a specific booking."
+          }
+        },
+        {
+          "name": "Cancel Booking",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{base_url}}/api/bookings/{{booking_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "bookings", "{{booking_id}}", ""]
+            },
+            "description": "Cancel a booking. Only the booking's driver can cancel. Slot is freed and wallet is refunded.\n\nCannot cancel already `CANCELLED` or `COMPLETED` bookings."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Wallet",
+      "description": "Digital wallet for managing funds used to pay for charging reservations.",
+      "item": [
+        {
+          "name": "Get Balance",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/wallet/balance/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "wallet", "balance", ""]
+            },
+            "description": "Get the current wallet balance for the authenticated user."
+          }
+        },
+        {
+          "name": "Top Up",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{base_url}}/api/wallet/topup/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "wallet", "topup", ""]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 500.00\n}"
+            },
+            "description": "Add funds to wallet. Maximum ₹10,000 per transaction."
+          }
+        },
+        {
+          "name": "Transaction History",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/wallet/transactions/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "wallet", "transactions", ""]
+            },
+            "description": "Get all wallet transactions (TOPUP, DEDUCTION, REFUND) with current balance."
+          }
+        }
+      ]
+    },
+    {
+      "name": "API Docs",
+      "description": "Auto-generated API documentation via drf-spectacular.",
+      "item": [
+        {
+          "name": "OpenAPI Schema",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/schema/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "schema", ""],
+              "query": [
+                { "key": "format", "value": "json", "description": "Response format: json or yaml (optional)" }
+              ]
+            },
+            "description": "Get the OpenAPI 3 schema (YAML/JSON)."
+          }
+        },
+        {
+          "name": "Swagger UI",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/docs/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "docs", ""]
+            },
+            "description": "Interactive Swagger UI documentation."
+          }
+        },
+        {
+          "name": "ReDoc",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/redoc/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "redoc", ""]
+            },
+            "description": "ReDoc UI documentation."
+          }
+        }
+      ]
+    },
+    {
+      "name": "FastAPI Service",
+      "description": "Endpoints from the FastAPI AI service (port 8001).",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{fastapi_url}}/health",
+              "host": ["{{fastapi_url}}"],
+              "path": ["health"]
+            },
+            "description": "Health check endpoint for the FastAPI AI service."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Helper: Set Driver Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "if (pm.response.code === 200) {",
+              "    var json = pm.response.json();",
+              "    pm.collectionVariables.set('driver_token', json.access);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "url": {
+          "raw": "{{base_url}}/api/auth/login/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "login", ""]
+        },
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"driver1\",\n  \"password\": \"DriverPass123!\"\n}"
+        },
+        "description": "Helper: Login as a driver and store the token in `{{driver_token}}`. Useful when testing multi-role scenarios."
+      }
+    },
+    {
+      "name": "Helper: Register Owner",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{base_url}}/api/auth/register/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "register", ""]
+        },
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"stationowner1\",\n  \"email\": \"owner@example.com\",\n  \"password\": \"OwnerPass123!\",\n  \"password2\": \"OwnerPass123!\",\n  \"role\": \"STATION_OWNER\",\n  \"phone_number\": \"+919876543211\",\n  \"car_model\": \"\",\n  \"battery_capacity_kwh\": 0\n}"
+        },
+        "description": "Helper: Register a STATION_OWNER account."
+      }
+    },
+    {
+      "name": "Helper: Register Driver",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{base_url}}/api/auth/register/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "register", ""]
+        },
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"driver1\",\n  \"email\": \"driver@example.com\",\n  \"password\": \"DriverPass123!\",\n  \"password2\": \"DriverPass123!\",\n  \"role\": \"DRIVER\",\n  \"phone_number\": \"+919876543212\",\n  \"car_model\": \"Hyundai Kona\",\n  \"battery_capacity_kwh\": 39.2\n}"
+        },
+        "description": "Helper: Register a DRIVER account."
+      }
+    }
+  ]
+}
