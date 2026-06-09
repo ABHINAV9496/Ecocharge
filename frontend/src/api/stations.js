@@ -1,0 +1,54 @@
+/*
+  Stations API
+  ------------
+  Manages charging stations and their slots.
+  Stations are located on a map using latitude/longitude coordinates.
+*/
+
+import apiClient from './client'
+
+// Get all stations (optionally filtered by location and radius)
+// params can include: lat, lng, radius (in km)
+export function getStations(params) {
+  return apiClient.get('/api/stations/', { params: params })
+}
+
+// Get a single station by its ID
+export function getStation(id) {
+  return apiClient.get('/api/stations/' + id + '/')
+}
+
+// Create a new charging station (Station Owner only)
+export function createStation(data) {
+  return apiClient.post('/api/stations/', data)
+}
+
+// Update an existing station's details
+export function updateStation(id, data) {
+  return apiClient.put('/api/stations/' + id + '/', data)
+}
+
+// Delete a charging station
+export function deleteStation(id) {
+  return apiClient.delete('/api/stations/' + id + '/')
+}
+
+// Get all charging slots for a specific station
+export function getSlots(stationId) {
+  return apiClient.get('/api/stations/' + stationId + '/slots/')
+}
+
+// Add a new charging slot to a station
+export function createSlot(stationId, data) {
+  return apiClient.post('/api/stations/' + stationId + '/slots/', data)
+}
+
+// Update a specific charging slot
+export function updateSlot(stationId, slotId, data) {
+  return apiClient.put('/api/stations/' + stationId + '/slots/' + slotId + '/', data)
+}
+
+// Delete a charging slot
+export function deleteSlot(stationId, slotId) {
+  return apiClient.delete('/api/stations/' + stationId + '/slots/' + slotId + '/')
+}
