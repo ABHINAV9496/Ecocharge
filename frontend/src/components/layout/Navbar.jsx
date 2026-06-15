@@ -45,7 +45,7 @@ export default function Navbar() {
                 className={
                   'px-4 py-1.5 text-sm rounded-lg transition-colors no-underline ' +
                   (isActive
-                    ? 'text-ev-green bg-ev-green/10 font-medium'
+                    ? 'text-ev-green bg-ev-green/10 font-medium dark:text-emerald-400 dark:bg-emerald-900/20'
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800')
                 }
               >

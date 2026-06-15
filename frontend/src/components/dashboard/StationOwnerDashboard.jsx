@@ -11,11 +11,12 @@
   5. Add new stations with name, address, location, and amenities
 */
 
-import { useState, useEffect } from 'react'
-import { FiPlus, FiMapPin, FiTrendingUp, FiCalendar, FiZap, FiDollarSign, FiEdit2, FiTrash2 } from 'react-icons/fi'
+import { useState, useEffect, useRef } from 'react'
+import { FiPlus, FiMapPin, FiTrendingUp, FiCalendar, FiZap, FiDollarSign, FiEdit2, FiTrash2, FiCrosshair } from 'react-icons/fi'
 import { getStations, createStation, updateStation, deleteStation, createSlot } from '../../api/stations'
 import { getBookings } from '../../api/bookings'
 import { formatCurrency, formatDate, SLOT_TYPE_LABELS } from '../../utils/formatters'
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 
 // ----------------------------------------------------------------
 // MAIN COMPONENT: Station Owner Dashboard
@@ -44,6 +45,7 @@ export default function StationOwnerDashboard() {
   var [error, setError] = useState('')             // Error message
   var [formError, setFormError] = useState('')     // Form submission error
   var [slotError, setSlotError] = useState('')     // Slot creation error
+  var [showMapPicker, setShowMapPicker] = useState(false)
 
   // ---- FETCH DATA ON MOUNT ----
   useEffect(function () {
@@ -241,6 +243,59 @@ export default function StationOwnerDashboard() {
         })}
       </div>
 
+      {/* ---- CHARTS SECTION ---- */}
+      {bookings.length > 0 && (function () {
+        var revenueByDate = {}
+        bookings
+          .filter(function (b) { return b.status === 'CONFIRMED' || b.status === 'COMPLETED' })
+          .forEach(function (b) {
+            var date = formatDate(b.created_at).split(',')[0]
+            revenueByDate[date] = (revenueByDate[date] || 0) + parseFloat(b.amount_charged || 0)
+          })
+        var revenueData = Object.entries(revenueByDate).map(function (e) { return { date: e[0], revenue: e[1] } })
+
+        var slotTypeCount = {}
+        stations.forEach(function (s) {
+          (s.slots || []).forEach(function (sl) {
+            var label = SLOT_TYPE_LABELS[sl.slot_type] || sl.slot_type
+            slotTypeCount[label] = (slotTypeCount[label] || 0) + 1
+          })
+        })
+        var pieData = Object.entries(slotTypeCount).map(function (e) { return { name: e[0], value: e[1] } })
+        var PIE_COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b']
+
+        return (
+          <div className="grid md:grid-cols-2 gap-4">
+            {revenueData.length > 1 && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue Trend</h3>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={revenueData}>
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="#6b7280" />
+                    <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {pieData.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Slot Distribution</h3>
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={function (e) { return e.name.split('(')[0].trim() }}>
+                      {pieData.map(function (e, i) { return <Cell key={e.name} fill={PIE_COLORS[i % PIE_COLORS.length]} /> })}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
       {/* ---- SECTION: Station List + Add Button ---- */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
         <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
@@ -283,16 +338,42 @@ export default function StationOwnerDashboard() {
                 onChange={function (e) { setForm(Object.assign({}, form, { address: e.target.value })) }}
                 className="px-3.5 py-2.5 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
               />
-              <input
-                type="number" step="any" placeholder="Latitude" value={form.latitude}
-                onChange={function (e) { setForm(Object.assign({}, form, { latitude: e.target.value })) }}
-                className="px-3.5 py-2.5 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
-              />
-              <input
-                type="number" step="any" placeholder="Longitude" value={form.longitude}
-                onChange={function (e) { setForm(Object.assign({}, form, { longitude: e.target.value })) }}
-                className="px-3.5 py-2.5 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
-              />
+              <div className="relative">
+                <input
+                  type="number" step="any" placeholder="Latitude" value={form.latitude}
+                  onChange={function (e) { setForm(Object.assign({}, form, { latitude: e.target.value })) }}
+                  className="w-full px-3.5 py-2.5 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                />
+              </div>
+              <div className="relative flex items-center gap-2">
+                <input
+                  type="number" step="any" placeholder="Longitude" value={form.longitude}
+                  onChange={function (e) { setForm(Object.assign({}, form, { longitude: e.target.value })) }}
+                  className="flex-1 px-3.5 py-2.5 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                />
+                <button
+                  type="button"
+                  onClick={function () { setShowMapPicker(!showMapPicker) }}
+                  className="shrink-0 px-3 py-2.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-900/30 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all flex items-center gap-1"
+                  title="Pick location on map"
+                >
+                  <FiCrosshair className="w-3.5 h-3.5" />
+                  Map
+                </button>
+              </div>
+              {showMapPicker && (
+                <div className="col-span-2">
+                  <MapPinPicker
+                    lat={form.latitude ? parseFloat(form.latitude) : 12.9716}
+                    lng={form.longitude ? parseFloat(form.longitude) : 77.5946}
+                    onPick={function (lat, lng) {
+                      setForm(Object.assign({}, form, { latitude: lat.toString(), longitude: lng.toString() }))
+                      setShowMapPicker(false)
+                    }}
+                    onClose={function () { setShowMapPicker(false) }}
+                  />
+                </div>
+              )}
               <input
                 type="text" placeholder="Amenities (comma-separated)" value={form.amenities}
                 onChange={function (e) { setForm(Object.assign({}, form, { amenities: e.target.value })) }}
@@ -378,10 +459,15 @@ export default function StationOwnerDashboard() {
                           <span className="font-medium text-gray-700 dark:text-gray-300">
                             {SLOT_TYPE_LABELS[slot.slot_type] || slot.slot_type}
                           </span>
-                          <div className="flex items-center gap-4">
-                            <span className="text-gray-500 dark:text-gray-400">
-                              {'\u20B9'}{slot.rate_per_kwh}/kWh
+                          <div className="flex items-center gap-3">
+                            <span className="text-gray-500 dark:text-gray-400 text-xs">
+                              {'\u20B9'}{slot.rate_per_kwh}
                             </span>
+                            {slot.off_peak_rate && (
+                              <span className="text-emerald-500 dark:text-emerald-400 text-xs">
+                                {'\u20B9'}{slot.off_peak_rate} off-peak
+                              </span>
+                            )}
                             <span className={'px-2 py-0.5 text-xs font-medium rounded-full ' + statusColor}>
                               {slot.status}
                             </span>
@@ -412,9 +498,16 @@ export default function StationOwnerDashboard() {
                             <option value="DC_ULTRA">DC Ultra</option>
                           </select>
                           <input
-                            type="number" placeholder="Rate/kWh" value={slotForm.rate_per_kwh}
+                            type="number" placeholder="Rate" value={slotForm.rate_per_kwh}
                             onChange={function (e) { setSlotForm(Object.assign({}, slotForm, { rate_per_kwh: e.target.value })) }}
-                            className="w-24 px-2.5 py-1.5 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none"
+                            className="w-20 px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none"
+                            title="Rate per kWh"
+                          />
+                          <input
+                            type="number" placeholder="Off-peak" value={slotForm.off_peak_rate}
+                            onChange={function (e) { setSlotForm(Object.assign({}, slotForm, { off_peak_rate: e.target.value })) }}
+                            className="w-20 px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none"
+                            title="Off-peak rate (optional)"
                           />
                           <button
                             onClick={function () { handleAddSlot(station.id) }}
@@ -446,6 +539,81 @@ export default function StationOwnerDashboard() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ----------------------------------------------------------------
+// Map Pin Picker — click a location on a Leaflet map to set lat/lng
+// ----------------------------------------------------------------
+function MapPinPicker(props) {
+  var mapRef = useRef(null)
+  var mapInstanceRef = useRef(null)
+  var markerRef = useRef(null)
+  var initialLat = props.lat || 12.9716
+  var initialLng = props.lng || 77.5946
+
+  useEffect(function () {
+    if (mapInstanceRef.current) return
+
+    var L = window.L
+    if (!L) {
+      var script = document.createElement('script')
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+      script.onload = initMap
+      document.head.appendChild(script)
+      var link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+      document.head.appendChild(link)
+    } else {
+      initMap()
+    }
+
+    function initMap() {
+      var L = window.L
+      var map = L.map(mapRef.current, { zoomControl: true }).setView([initialLat, initialLng], 13)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap',
+        maxZoom: 19,
+      }).addTo(map)
+
+      var marker = L.marker([initialLat, initialLng], { draggable: true }).addTo(map)
+      markerRef.current = marker
+
+      marker.on('dragend', function () {
+        var pos = marker.getLatLng()
+        props.onPick(pos.lat, pos.lng)
+      })
+
+      map.on('click', function (e) {
+        marker.setLatLng(e.latlng)
+        props.onPick(e.latlng.lat, e.latlng.lng)
+      })
+
+      mapInstanceRef.current = map
+    }
+
+    return function () {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove()
+        mapInstanceRef.current = null
+      }
+    }
+  }, [])
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-gray-300 dark:border-gray-700">
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-900">
+        <span className="text-xs text-gray-500">Click the map or drag the pin to set location</span>
+        <button
+          onClick={props.onClose}
+          className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+        >
+          Done
+        </button>
+      </div>
+      <div ref={mapRef} style={{ height: '250px', width: '100%' }} />
     </div>
   )
 }

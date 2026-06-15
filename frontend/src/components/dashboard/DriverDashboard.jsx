@@ -16,11 +16,12 @@
 */
 
 import { useState, useEffect } from 'react'
-import { FiUser, FiTruck, FiBatteryCharging, FiCalendar, FiX } from 'react-icons/fi'
+import { FiUser, FiTruck, FiBatteryCharging, FiCalendar, FiX, FiBarChart2 } from 'react-icons/fi'
 import { getProfile, updateProfile } from '../../api/auth'
 import { getBookings, cancelBooking } from '../../api/bookings'
 import { formatCurrency, formatDate, ROLE_LABELS } from '../../utils/formatters'
 import WalletCard from '../wallet/WalletCard'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 // ----------------------------------------------------------------
 // MAIN COMPONENT: Driver Dashboard
@@ -251,6 +252,32 @@ export default function DriverDashboard() {
             <div>
               <WalletCard />
             </div>
+          </div>
+        )
+      })()}
+
+      {/* ---- CHART: Booking costs ---- */}
+      {bookings.length > 1 && (function () {
+        var chartData = bookings.slice(-7).map(function (b) {
+          return {
+            label: formatDate(b.created_at).split(',')[0],
+            cost: parseFloat(b.amount_charged || 0)
+          }
+        })
+        return (
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <FiBarChart2 className="w-4 h-4 text-gray-400" />
+              Recent Booking Costs
+            </h3>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={chartData}>
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="#6b7280" />
+                <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" />
+                <Tooltip />
+                <Bar dataKey="cost" fill="#10b981" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         )
       })()}

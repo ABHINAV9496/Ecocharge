@@ -29,6 +29,9 @@ urlpatterns = [
     path('api/stations/', include('stations.urls')),
     path('api/bookings/', include('bookings.urls')),
     path('api/wallet/', include('wallet.urls')),
+    path('api/trips/', include('trips.urls')),
+
+    path('api/contact/', include('contact.urls')),
 
     # Geocoding proxy
     path('api/geocode/', GeocodeView.as_view(), name='geocode'),

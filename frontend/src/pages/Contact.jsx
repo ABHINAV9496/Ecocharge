@@ -2,9 +2,11 @@ import { Link } from 'react-router-dom'
 import { FiMail, FiMapPin, FiMessageCircle, FiBatteryCharging, FiSend, FiCheck } from 'react-icons/fi'
 import { useState } from 'react'
 import Navbar from '../components/layout/Navbar'
+import { sendContactMessage } from '../api/contact'
 
 export default function Contact() {
   var [sent, setSent] = useState(false)
+  var [error, setError] = useState('')
   var [form, setForm] = useState({ name: '', email: '', message: '' })
 
   function updateField(field, value) {
@@ -13,9 +15,15 @@ export default function Contact() {
     setForm(next)
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    setSent(true)
+    setError('')
+    try {
+      await sendContactMessage(form)
+      setSent(true)
+    } catch (err) {
+      setError('Failed to send message. Please try again later.')
+    }
   }
 
   return (
@@ -80,6 +88,11 @@ export default function Contact() {
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-5">
+                  {error && (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-xl">
+                      {error}
+                    </div>
+                  )}
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Name</label>

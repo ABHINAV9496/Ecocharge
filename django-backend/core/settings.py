@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'bookings',
     'wallet',
     'trips',
+    'contact',
 ]
 
 MIDDLEWARE = [

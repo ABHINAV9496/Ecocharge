@@ -16,7 +16,8 @@ import { useState, useEffect } from 'react'
 import { FiUsers, FiMapPin, FiCalendar, FiDollarSign, FiTrendingUp } from 'react-icons/fi'
 import { getStations } from '../../api/stations'
 import { getBookings } from '../../api/bookings'
-import { formatCurrency } from '../../utils/formatters'
+import { formatCurrency, formatDate } from '../../utils/formatters'
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 // ----------------------------------------------------------------
 // MAIN COMPONENT: Super Admin Dashboard
@@ -125,6 +126,53 @@ export default function SuperAdminDashboard() {
           )
         })}
       </div>
+
+      {/* ---- CHARTS SECTION ---- */}
+      {(function () {
+        var revenueByDate = {}
+        bookings.forEach(function (b) {
+          var date = formatDate(b.created_at).split(',')[0]
+          revenueByDate[date] = (revenueByDate[date] || 0) + parseFloat(b.amount_charged || 0)
+        })
+        var revenueData = Object.entries(revenueByDate).map(function (e) { return { date: e[0], revenue: e[1] } })
+
+        var statusCount = { PENDING: 0, CONFIRMED: 0, COMPLETED: 0, CANCELLED: 0 }
+        bookings.forEach(function (b) { statusCount[b.status] = (statusCount[b.status] || 0) + 1 })
+        var pieData = Object.entries(statusCount).filter(function (e) { return e[1] > 0 }).map(function (e) { return { name: e[0], value: e[1] } })
+        var PIE_COLORS = { PENDING: '#f59e0b', CONFIRMED: '#3b82f6', COMPLETED: '#10b981', CANCELLED: '#ef4444' }
+
+        if (revenueData.length === 0 && pieData.length === 0) return null
+        return (
+          <div className="grid md:grid-cols-2 gap-4">
+            {revenueData.length > 1 && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue Over Time</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={revenueData}>
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="#6b7280" />
+                    <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {pieData.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Booking Status</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                      {pieData.map(function (e) { return <Cell key={e.name} fill={PIE_COLORS[e.name] || '#6b7280'} /> })}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ---- TWO-COLUMN DETAILS ---- */}
       <div className="grid md:grid-cols-2 gap-6">

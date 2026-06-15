@@ -74,7 +74,7 @@ export default function Sidebar() {
       <div className="mt-auto px-4 py-3 border-t border-gray-200 dark:border-gray-800">
         <div className="hidden md:flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-gray-400 dark:text-gray-500">
             {user.role === 'SUPER_ADMIN' ? 'Administrator' :
              user.role === 'STATION_OWNER' ? 'Station Owner' :
              user.role === 'DRIVER' ? 'EV Driver' : 'Guest'}

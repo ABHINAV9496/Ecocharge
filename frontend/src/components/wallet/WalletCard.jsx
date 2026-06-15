@@ -188,7 +188,7 @@ export default function WalletCard() {
                       <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
                         {tx.description || tx.transaction_type}
                       </p>
-                      <p className="text-[10px] text-gray-400">{formatDate(tx.created_at)}</p>
+                      <p className="text-[10px] text-gray-400 dark:text-gray-500">{formatDate(tx.created_at)}</p>
                     </div>
                   </div>
                   <span className={'text-xs font-semibold ' + amountColor}>

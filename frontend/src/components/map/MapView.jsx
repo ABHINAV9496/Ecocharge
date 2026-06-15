@@ -621,6 +621,7 @@ export default function MapView(props) {
       )}
 
       <style>{`
+        /* Zoom controls — dark theme */
         .leaflet-control-zoom {
           border: 1px solid #374151 !important;
           border-radius: 12px !important;
@@ -644,6 +645,22 @@ export default function MapView(props) {
         }
         .leaflet-control-zoom a.leaflet-disabled {
           color: #4b5563 !important;
+        }
+        /* Popups — dark theme */
+        .leaflet-popup-content-wrapper {
+          background: #1f2937 !important;
+          color: #f3f4f6 !important;
+          border-radius: 12px !important;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+        }
+        .leaflet-popup-tip {
+          background: #1f2937 !important;
+        }
+        .leaflet-popup-close-button {
+          color: #9ca3af !important;
+        }
+        .leaflet-popup-close-button:hover {
+          color: #10b981 !important;
         }
       `}</style>
     </div>
