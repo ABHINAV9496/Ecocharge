@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { FiBatteryCharging, FiMapPin, FiMessageCircle, FiTrendingUp } from 'react-icons/fi'
+import { FiBatteryCharging, FiMapPin, FiMessageCircle, FiTrendingUp, FiArrowRight } from 'react-icons/fi'
 import Navbar from '../components/layout/Navbar'
 
 export default function Home() {
@@ -21,12 +21,19 @@ export default function Home() {
               AI-powered trip planning, real-time charger availability, and smart battery prediction
               — all in one platform.
             </p>
-            <div className="flex items-center justify-center gap-4">
+            <div className="flex items-center justify-center gap-4 flex-wrap">
               <Link
                 to="/register"
                 className="px-8 py-3 bg-ev-green text-white rounded-xl font-medium text-lg hover:bg-green-600 transition-colors"
               >
                 Get Started
+              </Link>
+              <Link
+                to="/map"
+                className="px-8 py-3 border-2 border-ev-green text-ev-green rounded-xl font-medium text-lg hover:bg-ev-green/5 transition-colors inline-flex items-center gap-2"
+              >
+                Try the Map
+                <FiArrowRight className="w-4 h-4" />
               </Link>
               <Link
                 to="/login"
@@ -57,13 +64,15 @@ export default function Home() {
                   title: 'Smart Predictions',
                   desc: 'ML-powered battery consumption predictions considering elevation, weather, traffic, and your specific EV model.',
                 },
-              ].map((feature) => (
-                <div key={feature.title} className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                  <feature.icon className="w-10 h-10 text-ev-green mb-4" />
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{feature.title}</h3>
-                  <p className="text-gray-500 dark:text-gray-400 text-sm">{feature.desc}</p>
-                </div>
-              ))}
+              ].map(function (feature) {
+                return (
+                  <div key={feature.title} className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
+                    <feature.icon className="w-10 h-10 text-ev-green mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{feature.title}</h3>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">{feature.desc}</p>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </section>

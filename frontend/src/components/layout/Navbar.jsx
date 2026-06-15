@@ -1,46 +1,32 @@
-/*
-  Navbar
-  ------
-  The top navigation bar that appears on every page.
-
-  Sections:
-  - Left: Logo (EcoCharge brand)
-  - Right: Dark mode toggle + User menu or Login/Register buttons
-
-  The navbar has a glass-morphism effect (semi-transparent with blur).
-*/
-
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { FiSun, FiMoon, FiLogOut, FiBatteryCharging, FiUser } from 'react-icons/fi'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { logout as logoutApi } from '../../api/auth'
 
+var NAV_LINKS = [
+  { label: 'Home', path: '/' },
+  { label: 'About', path: '/about' },
+  { label: 'Features', path: '/features' },
+  { label: 'Contact', path: '/contact' },
+]
+
 export default function Navbar() {
   var { user, logoutUser } = useAuth()
   var { dark, toggle: toggleTheme } = useTheme()
-  var navigate = useNavigate()
+  var location = useLocation()
 
-  // Log the user out and redirect to login page
   function handleLogout() {
-    var refreshToken = localStorage.getItem('refresh_token')
-
-    // Try to blacklist the token on the server (optional - fire and forget)
-    logoutApi(refreshToken).catch(function (error) {
-      console.error('Logout API call failed (this is usually fine):', error)
-    })
-
-    // Clear local state and redirect
+    try { logoutApi(localStorage.getItem('refresh_token')) } catch (e) {}
     logoutUser()
-    navigate('/login')
+    window.location.href = '/login'
   }
 
   return (
     <nav className="fixed top-0 left-0 right-0 h-16 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 z-50">
-      <div className="h-full px-4 flex items-center justify-between">
+      <div className="h-full max-w-7xl mx-auto px-4 flex items-center justify-between">
 
-        {/* LEFT SECTION: Logo and Brand Name */}
-        <Link to="/" className="flex items-center gap-2 no-underline">
+        <Link to="/" className="flex items-center gap-2 no-underline shrink-0">
           <div className="w-9 h-9 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
             <FiBatteryCharging className="w-5 h-5 text-white" />
           </div>
@@ -49,10 +35,27 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* RIGHT SECTION: Theme Toggle + User Menu */}
-        <div className="flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-1">
+          {NAV_LINKS.map(function (link) {
+            var isActive = location.pathname === link.path
+            return (
+              <Link
+                key={link.path}
+                to={link.path}
+                className={
+                  'px-4 py-1.5 text-sm rounded-lg transition-colors no-underline ' +
+                  (isActive
+                    ? 'text-ev-green bg-ev-green/10 font-medium'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800')
+                }
+              >
+                {link.label}
+              </Link>
+            )
+          })}
+        </div>
 
-          {/* Dark Mode Toggle Button */}
+        <div className="flex items-center gap-2">
           <button
             onClick={toggleTheme}
             className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -61,10 +64,8 @@ export default function Navbar() {
             {dark ? <FiSun className="w-4 h-4" /> : <FiMoon className="w-4 h-4" />}
           </button>
 
-          {/* If user is logged in: show user info + logout button */}
           {user && (
             <div className="flex items-center gap-2">
-              {/* User name and role badge */}
               <Link
                 to="/dashboard"
                 className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors no-underline"
@@ -77,8 +78,6 @@ export default function Navbar() {
                   {user.role === 'SUPER_ADMIN' ? 'Admin' : user.role === 'STATION_OWNER' ? 'Owner' : 'Driver'}
                 </span>
               </Link>
-
-              {/* Logout Button */}
               <button
                 onClick={handleLogout}
                 className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -89,7 +88,6 @@ export default function Navbar() {
             </div>
           )}
 
-          {/* If user is NOT logged in: show login + register buttons */}
           {!user && (
             <div className="flex items-center gap-1">
               <Link
@@ -102,7 +100,7 @@ export default function Navbar() {
                 to="/register"
                 className="px-4 py-1.5 text-sm font-medium bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-lg hover:from-emerald-600 hover:to-emerald-700 shadow-lg shadow-emerald-500/20 transition-all no-underline"
               >
-                Sign up
+                Get Started
               </Link>
             </div>
           )}

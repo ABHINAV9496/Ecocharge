@@ -23,7 +23,7 @@
 */
 
 import { useState, useEffect } from 'react'
-import { FiX, FiClock, FiDollarSign, FiSmartphone, FiBatteryCharging } from 'react-icons/fi'
+import { FiX, FiClock, FiDollarSign, FiBatteryCharging } from 'react-icons/fi'
 import { getSlots } from '../../api/stations'
 import { createBooking } from '../../api/bookings'
 import { getBalance } from '../../api/wallet'
@@ -80,10 +80,18 @@ export default function StationSidebar(props) {
 
   // ---- LOAD DATA ON MOUNT ----
   // Runs once when the component first appears or the station changes
+  // For OCM stations, slots are already embedded — no need to fetch
   useEffect(function () {
-    loadSlots()
+    if (station.isOCM) {
+      // OCM stations already have slots data from the mapper
+      setSlots(station.slots || [])
+      setLoading(false)
+    } else {
+      // Local stations need to fetch slots from the backend
+      loadSlots()
+    }
 
-    if (user) {
+    if (user && !station.isOCM) {
       loadBalance()
     }
   }, [station.id, user])
@@ -164,7 +172,6 @@ export default function StationSidebar(props) {
           Station name, address, and close button.
           Uses glass-morphism background with a gradient accent line. */}
       <div className="sticky top-0 z-10 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800">
-        {/* Gradient accent bar */}
         <div className="h-1 bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600" />
 
         <div className="p-5">
@@ -186,7 +193,6 @@ export default function StationSidebar(props) {
             </button>
           </div>
 
-          {/* Quick stats row */}
           <div className="flex items-center gap-3 mt-3">
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg">
               <FiBatteryCharging className="w-3.5 h-3.5 text-emerald-500" />
@@ -194,14 +200,6 @@ export default function StationSidebar(props) {
                 {availableCount}/{totalCount} Available
               </span>
             </div>
-            {station.distance && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
-                <FiSmartphone className="w-3.5 h-3.5 text-blue-500" />
-                <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                  {station.distance.toFixed(1)} km
-                </span>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -336,6 +334,14 @@ export default function StationSidebar(props) {
                                       {'\u20B9'}{slot.rate_per_kwh}/kWh
                                     </span>
 
+                                    {/* Power rating (for OCM slots) */}
+                                    {slot.power_kw && (
+                                      <span className="flex items-center gap-1">
+                                        <FiBatteryCharging className="w-3 h-3" />
+                                        {slot.power_kw} kW
+                                      </span>
+                                    )}
+
                                     {/* Off-peak rate (if available) */}
                                     {slot.off_peak_rate && (
                                       <span className="flex items-center gap-1">
@@ -345,8 +351,8 @@ export default function StationSidebar(props) {
                                     )}
                                   </div>
 
-                                  {/* Book button — only for DRIVER users on available slots */}
-                                  {slot.status === 'AVAILABLE' && user && user.role === 'DRIVER' && (
+                                  {/* Book button — only for DRIVER users on available slots (local stations only) */}
+                                  {slot.status === 'AVAILABLE' && user && user.role === 'DRIVER' && !station.isOCM && (
                                     <button
                                       onClick={function () { handleBook(slot) }}
                                       disabled={booking === slot.id}
@@ -375,8 +381,8 @@ export default function StationSidebar(props) {
           }
         </div>
 
-        {/* ---- SECTION: Wallet Balance ---- */}
-        {user && (
+        {/* ---- SECTION: Wallet Balance (local stations only) ---- */}
+        {user && !station.isOCM && (
           <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
             <div className="flex items-center justify-between">
               <div>
@@ -392,8 +398,8 @@ export default function StationSidebar(props) {
           </div>
         )}
 
-        {/* Login prompt for guests */}
-        {!user && (
+        {/* Login prompt for guests (local stations only) */}
+        {!user && !station.isOCM && (
           <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
             <p className="text-xs text-center text-gray-400 dark:text-gray-500">
               <a href="/login" className="text-emerald-500 hover:text-emerald-600 font-medium">

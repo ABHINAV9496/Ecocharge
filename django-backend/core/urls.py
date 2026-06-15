@@ -21,6 +21,7 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
     SpectacularRedocView
 )
+from .views import GeocodeView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -28,6 +29,9 @@ urlpatterns = [
     path('api/stations/', include('stations.urls')),
     path('api/bookings/', include('bookings.urls')),
     path('api/wallet/', include('wallet.urls')),
+
+    # Geocoding proxy
+    path('api/geocode/', GeocodeView.as_view(), name='geocode'),
 
     # Swagger
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

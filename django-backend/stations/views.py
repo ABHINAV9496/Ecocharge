@@ -1,14 +1,15 @@
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.gis.geos import Point
 from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.measure import D
 from drf_spectacular.utils import extend_schema
-from .models import ChargingStation, ChargingSlot
+from .models import ChargingStation, ChargingSlot, CachedOCMStation
 from .serializers import (
     ChargingStationSerializer,
+    CachedOCMStationSerializer,
     CreateStationSerializer,
     ChargingSlotSerializer
 )
@@ -16,24 +17,44 @@ from .serializers import (
 
 @extend_schema(tags=['Stations'])
 class StationListView(APIView):
+    permission_classes = [AllowAny]
 
     def get(self, request):
+        include_ocm = request.query_params.get('include_ocm', 'true').lower() == 'true'
         lat = request.query_params.get('lat')
         lng = request.query_params.get('lng')
-        radius = request.query_params.get('radius', 5)
+        radius = request.query_params.get('radius')
 
-        if lat and lng:
+        if lat and lng and radius:
             user_location = Point(float(lng), float(lat), srid=4326)
             stations = ChargingStation.objects.filter(
-                location__distance_lte=(user_location, D(km=radius))
+                location__distance_lte=(user_location, D(km=float(radius)))
             ).annotate(
                 distance=Distance('location', user_location)
             ).order_by('distance')
         else:
             stations = ChargingStation.objects.all()
 
-        serializer = ChargingStationSerializer(stations, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        merged = list(ChargingStationSerializer(stations, many=True).data)
+
+        if include_ocm:
+            ocm_stations = CachedOCMStation.objects.all()
+            if lat and lng and radius:
+                from math import radians, sin, cos, sqrt, atan2
+                rad = float(radius)
+                filtered_ocm = []
+                for ocm in ocm_stations:
+                    dlat = radians(ocm.latitude - float(lat))
+                    dlng = radians(ocm.longitude - float(lng))
+                    a = sin(dlat / 2) ** 2 + cos(radians(float(lat))) * cos(radians(ocm.latitude)) * sin(dlng / 2) ** 2
+                    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+                    dist = 6371 * c
+                    if dist <= rad:
+                        filtered_ocm.append(ocm)
+                ocm_stations = filtered_ocm
+            merged.extend(CachedOCMStationSerializer(ocm_stations, many=True).data)
+
+        return Response(merged, status=status.HTTP_200_OK)
 
     def post(self, request):
         if request.user.role not in ['STATION_OWNER', 'SUPER_ADMIN']:

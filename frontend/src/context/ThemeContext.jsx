@@ -24,17 +24,13 @@ var ThemeContext = createContext(null)
 export function ThemeProvider(props) {
   var children = props.children
 
-  // Initialize theme based on saved preference or system setting
+  // Initialize theme — default to dark
   var [dark, setDark] = useState(function () {
-    // First, check if user has saved a preference before
     var savedTheme = localStorage.getItem('theme')
     if (savedTheme) {
       return savedTheme === 'dark'
     }
-
-    // If no saved preference, check if the user's system uses dark mode
-    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)')
-    return prefersDark.matches
+    return true
   })
 
   // Whenever 'dark' state changes, update the HTML class and save preference

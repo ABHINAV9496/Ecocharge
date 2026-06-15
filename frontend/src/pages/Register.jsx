@@ -124,6 +124,9 @@ export default function Register() {
 
         {/* HEADER */}
         <div className="text-center mb-8">
+          <Link to="/login" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-emerald-500 transition-colors mb-4">
+            ← Back to Login
+          </Link>
           <div className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-emerald-500/20">
             <FiBatteryCharging className="w-8 h-8 text-white" />
           </div>
