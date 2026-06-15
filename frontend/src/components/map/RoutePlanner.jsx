@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { FiNavigation, FiMapPin, FiZap, FiClock, FiX, FiChevronLeft } from 'react-icons/fi'
 import VehicleSelector from './VehicleSelector'
 import { getEstimatedRange, getVehicleById } from '../../data/vehicleProfiles'
+import { searchLocations } from '../../api/geocode'
 
 var OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
 
@@ -33,26 +34,19 @@ export default function RoutePlanner(props) {
   var originTimer = useRef(null)
   var destTimer = useRef(null)
 
-  async function geocode(query, type) {
+  async function doSearch(query, type) {
     if (!query.trim()) {
       if (type === 'origin') { setOriginSuggestions([]); setShowOriginResults(false) }
       else { setDestSuggestions([]); setShowDestResults(false) }
       return
     }
-    try {
-      var res = await fetch('/api/geocode/?q=' + encodeURIComponent(query) + '&limit=5')
-      if (!res.ok) return
-      var data = await res.json()
-      if (!Array.isArray(data)) return
-      if (type === 'origin') {
-        setOriginSuggestions(data)
-        setShowOriginResults(data.length > 0)
-      } else {
-        setDestSuggestions(data)
-        setShowDestResults(data.length > 0)
-      }
-    } catch (e) {
-      console.error('Geocode error:', e)
+    var data = await searchLocations(query, 5)
+    if (type === 'origin') {
+      setOriginSuggestions(data)
+      setShowOriginResults(data.length > 0)
+    } else {
+      setDestSuggestions(data)
+      setShowDestResults(data.length > 0)
     }
   }
 
@@ -60,14 +54,14 @@ export default function RoutePlanner(props) {
     setOrigin(value)
     setOriginCoords(null)
     if (originTimer.current) clearTimeout(originTimer.current)
-    originTimer.current = setTimeout(function () { geocode(value, 'origin') }, 600)
+    originTimer.current = setTimeout(function () { doSearch(value, 'origin') }, 100)
   }
 
   function handleDestInput(value) {
     setDestination(value)
     setDestCoords(null)
     if (destTimer.current) clearTimeout(destTimer.current)
-    destTimer.current = setTimeout(function () { geocode(value, 'destination') }, 600)
+    destTimer.current = setTimeout(function () { doSearch(value, 'destination') }, 100)
   }
 
   function selectOrigin(suggestion) {

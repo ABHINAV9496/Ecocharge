@@ -257,7 +257,22 @@ export default function DriverDashboard() {
       })()}
 
       {/* ---- CHART: Booking costs ---- */}
-      {bookings.length > 1 && (function () {
+      {(function () {
+        if (bookings.length < 2) {
+          return (
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <FiBarChart2 className="w-4 h-4 text-gray-400" />
+                Recent Booking Costs
+              </h3>
+              <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-gray-500">
+                <FiBarChart2 className="w-8 h-8 mb-2" />
+                <p className="text-sm">Not enough booking data</p>
+                <p className="text-xs mt-1">Complete at least 2 bookings to see cost trends</p>
+              </div>
+            </div>
+          )
+        }
         var chartData = bookings.slice(-7).map(function (b) {
           return {
             label: formatDate(b.created_at).split(',')[0],

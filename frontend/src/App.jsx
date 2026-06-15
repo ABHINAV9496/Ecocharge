@@ -30,7 +30,7 @@ function App() {
       <Route path="/about" element={<About />} />
       <Route path="/features" element={<Features />} />
       <Route path="/contact" element={<Contact />} />
-      <Route path="/login" element={user ? <Navigate to="/map" replace /> : <Login />} />
+      <Route path="/login" element={<Login />} />
       <Route path="/register" element={user ? <Navigate to="/map" replace /> : <Register />} />
       <Route path="/map" element={<MapPage />} />
       <Route

@@ -141,10 +141,11 @@ export default function SuperAdminDashboard() {
         var pieData = Object.entries(statusCount).filter(function (e) { return e[1] > 0 }).map(function (e) { return { name: e[0], value: e[1] } })
         var PIE_COLORS = { PENDING: '#f59e0b', CONFIRMED: '#3b82f6', COMPLETED: '#10b981', CANCELLED: '#ef4444' }
 
-        if (revenueData.length === 0 && pieData.length === 0) return null
+        var hasAnyData = revenueData.length > 0 || pieData.length > 0
+
         return (
           <div className="grid md:grid-cols-2 gap-4">
-            {revenueData.length > 1 && (
+            {revenueData.length > 1 ? (
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue Over Time</h3>
                 <ResponsiveContainer width="100%" height={220}>
@@ -156,8 +157,17 @@ export default function SuperAdminDashboard() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+            ) : (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue Over Time</h3>
+                <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-gray-500">
+                  <FiTrendingUp className="w-8 h-8 mb-2" />
+                  <p className="text-sm">{hasAnyData ? 'Not enough data for trend' : 'No revenue data yet'}</p>
+                  <p className="text-xs mt-1">Need at least 2 bookings with revenue to show a trend</p>
+                </div>
+              </div>
             )}
-            {pieData.length > 0 && (
+            {pieData.length > 0 ? (
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Booking Status</h3>
                 <ResponsiveContainer width="100%" height={220}>
@@ -168,6 +178,15 @@ export default function SuperAdminDashboard() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Booking Status</h3>
+                <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-gray-500">
+                  <FiTrendingUp className="w-8 h-8 mb-2" />
+                  <p className="text-sm">No booking data yet</p>
+                  <p className="text-xs mt-1">Booking status distribution will appear once drivers make bookings</p>
+                </div>
               </div>
             )}
           </div>

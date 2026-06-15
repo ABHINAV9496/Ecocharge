@@ -34,7 +34,8 @@ export default function Login() {
   var navigate = useNavigate()
   var location = useLocation()
 
-  // Where to redirect after login (default: /map)
+  // Where to redirect after login
+  // SUPER_ADMIN → dashboard, others → map
   var redirectTo = '/map'
   if (location.state && location.state.from) {
     redirectTo = location.state.from.pathname
@@ -55,8 +56,12 @@ export default function Login() {
       // Save user info and tokens in context/localStorage
       loginUser(data.user, data.access, data.refresh)
 
-      // Redirect to the map (or the page they came from)
-      navigate(redirectTo)
+      // Force full page reload so AuthContext re-initializes from fresh localStorage
+      var target = data.user.role === 'SUPER_ADMIN' ? '/dashboard' : '/map'
+      if (location.state && location.state.from) {
+        target = location.state.from.pathname
+      }
+      window.location.href = target
 
     } catch (error) {
       // Show a user-friendly error message

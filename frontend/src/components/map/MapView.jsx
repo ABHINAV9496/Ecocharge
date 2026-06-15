@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMapEvents, LayersControl, Po
 import L from 'leaflet'
 import { FiSearch, FiCrosshair, FiBatteryCharging, FiRefreshCw, FiSettings, FiNavigation, FiChevronRight } from 'react-icons/fi'
 import { getStations } from '../../api/stations'
+import { searchLocations } from '../../api/geocode'
 import { useWebSocket } from '../../context/WebSocketContext'
 import { useAuth } from '../../context/AuthContext'
 import VehicleSelector from './VehicleSelector'
@@ -246,37 +247,29 @@ export default function MapView(props) {
 
   async function searchLocation() {
     if (!locationQuery.trim()) return
-    try {
-      var res = await fetch('/api/geocode/?q=' + encodeURIComponent(locationQuery) + '&limit=1')
-      var data = await res.json()
-      if (Array.isArray(data) && data.length > 0) {
-        var lat = parseFloat(data[0].lat)
-        var lng = parseFloat(data[0].lon)
+    var data = await searchLocations(locationQuery, 1)
+    if (data && data.length > 0) {
+      var lat = parseFloat(data[0].lat)
+      var lng = parseFloat(data[0].lon)
+      if (!isNaN(lat) && !isNaN(lng)) {
         setUserLocation([lat, lng])
         loadStations(lat, lng, searchRadius)
         if (mapRef.current) mapRef.current.flyTo([lat, lng], 12)
       }
-    } catch (error) {
-      console.error('Location search failed:', error)
     }
   }
 
   async function geocodeSearch(query) {
     if (!query.trim()) { setSearchSuggestions([]); setShowSearchSuggestions(false); return }
-    try {
-      var res = await fetch('/api/geocode/?q=' + encodeURIComponent(query) + '&limit=5')
-      if (!res.ok) return
-      var data = await res.json()
-      if (!Array.isArray(data)) return
-      setSearchSuggestions(data)
-      setShowSearchSuggestions(data.length > 0)
-    } catch (e) { console.error('Search geocode error:', e) }
+    var data = await searchLocations(query, 5)
+    setSearchSuggestions(data)
+    setShowSearchSuggestions(data.length > 0)
   }
 
   function handleLocationInput(value) {
     setLocationQuery(value)
     if (searchTimer.current) clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(function () { geocodeSearch(value) }, 600)
+    searchTimer.current = setTimeout(function () { geocodeSearch(value) }, 100)
   }
 
   function selectSearchSuggestion(s) {

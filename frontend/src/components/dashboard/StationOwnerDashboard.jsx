@@ -244,7 +244,33 @@ export default function StationOwnerDashboard() {
       </div>
 
       {/* ---- CHARTS SECTION ---- */}
-      {bookings.length > 0 && (function () {
+      {(function () {
+        var hasBookings = bookings.length > 0
+        var hasSlots = stations.some(function (s) { return (s.slots || []).length > 0 })
+
+        if (!hasBookings && !hasSlots) {
+          return (
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue Trend</h3>
+                <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-gray-500">
+                  <FiTrendingUp className="w-8 h-8 mb-2" />
+                  <p className="text-sm">No revenue data yet</p>
+                  <p className="text-xs mt-1">Bookings will appear here once drivers use your stations</p>
+                </div>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Slot Distribution</h3>
+                <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-gray-500">
+                  <FiZap className="w-8 h-8 mb-2" />
+                  <p className="text-sm">No slots configured</p>
+                  <p className="text-xs mt-1">Add slots to your stations to see distribution</p>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
         var revenueByDate = {}
         bookings
           .filter(function (b) { return b.status === 'CONFIRMED' || b.status === 'COMPLETED' })
@@ -266,7 +292,7 @@ export default function StationOwnerDashboard() {
 
         return (
           <div className="grid md:grid-cols-2 gap-4">
-            {revenueData.length > 1 && (
+            {revenueData.length > 1 ? (
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue Trend</h3>
                 <ResponsiveContainer width="100%" height={200}>
@@ -278,8 +304,17 @@ export default function StationOwnerDashboard() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+            ) : (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue Trend</h3>
+                <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-gray-500">
+                  <FiTrendingUp className="w-8 h-8 mb-2" />
+                  <p className="text-sm">{hasBookings ? 'Not enough data for trend' : 'No revenue data yet'}</p>
+                  <p className="text-xs mt-1">Need at least 2 bookings with revenue to show a trend</p>
+                </div>
+              </div>
             )}
-            {pieData.length > 0 && (
+            {pieData.length > 0 ? (
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Slot Distribution</h3>
                 <ResponsiveContainer width="100%" height={200}>
@@ -290,6 +325,15 @@ export default function StationOwnerDashboard() {
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Slot Distribution</h3>
+                <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-gray-500">
+                  <FiZap className="w-8 h-8 mb-2" />
+                  <p className="text-sm">No slots configured</p>
+                  <p className="text-xs mt-1">Add slots to your stations to see distribution</p>
+                </div>
               </div>
             )}
           </div>

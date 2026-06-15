@@ -16,6 +16,7 @@
 */
 
 import { createContext, useContext, useState, useEffect } from 'react'
+import { getProfile } from '../api/auth'
 
 // Create the context with a default value of null
 // React will replace this with the actual value from AuthProvider
@@ -44,8 +45,20 @@ export function AuthProvider(props) {
     var savedUser = localStorage.getItem('user')
 
     if (token && savedUser) {
-      // User has a saved session - restore it
-      setUser(JSON.parse(savedUser))
+      var parsedUser = JSON.parse(savedUser)
+      // Restore from localStorage immediately so the UI isn't blank
+      setUser(parsedUser)
+
+      // Then fetch fresh profile from backend to ensure role etc. are up-to-date
+      getProfile()
+        .then(function (res) {
+          var freshUser = Object.assign({}, parsedUser, res.data)
+          localStorage.setItem('user', JSON.stringify(freshUser))
+          setUser(freshUser)
+        })
+        .catch(function () {
+          // If profile fetch fails (e.g. token expired), keep the cached user
+        })
     }
 
     // Done checking, stop showing the loading spinner
