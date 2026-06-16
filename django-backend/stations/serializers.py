@@ -31,6 +31,41 @@ class ChargingStationSerializer(serializers.ModelSerializer):
         return obj.location.x if obj.location else None
 
 
+OCM_CONNECTOR_TYPE_MAP = {
+    'CCS': 'DC_FAST',
+    'CHAdeMO': 'DC_FAST',
+    'Type 2': 'AC_FAST',
+    'Mennekes': 'AC_FAST',
+    'Type 1': 'AC_SLOW',
+    'J1772': 'AC_SLOW',
+    'Tesla': 'DC_ULTRA',
+    'Supercharger': 'DC_ULTRA',
+    'Wall Outlet': 'AC_SLOW',
+    'BS 1363': 'AC_SLOW',
+    'IEC 60309': 'AC_SLOW',
+    'Commando': 'AC_SLOW',
+    'Type 3': 'AC_SLOW',
+    'SCAME': 'AC_SLOW',
+    'NEMA': 'AC_SLOW',
+}
+
+
+def _map_ocm_connector(title):
+    if not title:
+        return 'AC_FAST'
+    lower = title.lower()
+    for key, slot_type in OCM_CONNECTOR_TYPE_MAP.items():
+        if key.lower() in lower:
+            return slot_type
+    return 'AC_FAST'
+
+
+def _extract_connector_type(entry):
+    if isinstance(entry, dict):
+        return entry.get('type', 'Unknown'), entry.get('power_kw')
+    return str(entry), None
+
+
 class CachedOCMStationSerializer(serializers.ModelSerializer):
     id = serializers.SerializerMethodField()
     slots = serializers.SerializerMethodField()
@@ -40,6 +75,7 @@ class CachedOCMStationSerializer(serializers.ModelSerializer):
     isOCM = serializers.SerializerMethodField()
     source = serializers.SerializerMethodField()
     ocm_id = serializers.IntegerField()
+    last_updated = serializers.DateTimeField()
 
     class Meta:
         model = CachedOCMStation
@@ -47,7 +83,7 @@ class CachedOCMStationSerializer(serializers.ModelSerializer):
             'id', 'ocm_id', 'name', 'address',
             'latitude', 'longitude', 'city', 'state',
             'status', 'slots', 'total_slots', 'available_slots',
-            'amenities', 'isOCM', 'source',
+            'amenities', 'isOCM', 'source', 'last_updated',
         ]
 
     def get_id(self, obj):
@@ -55,16 +91,19 @@ class CachedOCMStationSerializer(serializers.ModelSerializer):
 
     def get_slots(self, obj):
         slots = []
-        for i, ct in enumerate(obj.connector_types):
+        connector_types = obj.connector_types or []
+        for i, entry in enumerate(connector_types):
+            title, power_kw = _extract_connector_type(entry)
+            slot_type = _map_ocm_connector(title)
             slots.append({
                 'id': 'ocm_slot_{}_{}'.format(obj.ocm_id, i),
                 'station': obj.ocm_id,
-                'slot_type': 'AC_FAST',
-                'label': ct,
-                'name': '{} #{}'.format(ct, i + 1),
+                'slot_type': slot_type,
+                'label': title,
+                'name': '{} #{}'.format(title, i + 1),
                 'status': 'AVAILABLE',
                 'rate_per_kwh': '10.00',
-                'power_kw': None,
+                'power_kw': power_kw,
                 'off_peak_rate': None,
                 'isOCM': True,
             })
@@ -84,10 +123,10 @@ class CachedOCMStationSerializer(serializers.ModelSerializer):
         return slots
 
     def get_total_slots(self, obj):
-        return max(len(obj.connector_types), 1)
+        return max(len(obj.connector_types or []), 1)
 
     def get_available_slots(self, obj):
-        return max(len(obj.connector_types), 1)
+        return max(len(obj.connector_types or []), 1)
 
     def get_amenities(self, obj):
         return []

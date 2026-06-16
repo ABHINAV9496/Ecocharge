@@ -1,14 +1,15 @@
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from .models import Booking
 from .serializers import BookingSerializer, CreateBookingSerializer
 from wallet.models import WalletTransaction
-from stations.models import ChargingSlot
+from stations.models import ChargingSlot, ChargingStation
 from .tasks import send_booking_confirmation
 
 
@@ -204,3 +205,33 @@ class BookingDetailView(APIView):
             {'message': 'Booking cancelled and refund processed'},
             status=status.HTTP_200_OK
         )
+
+
+@extend_schema(tags=['Bookings'])
+class HeatmapView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        days = request.query_params.get('days', '90')
+
+        stations = ChargingStation.objects.annotate(
+            booking_count=Count('slots__bookings')
+        ).filter(booking_count__gt=0)
+
+        if days:
+            from datetime import timedelta
+            cutoff = timezone.now() - timedelta(days=int(days))
+            stations = stations.filter(slots__bookings__created_at__gte=cutoff)
+
+        station_list = list(stations)
+        max_count = max((s.booking_count for s in station_list), default=1)
+        data = []
+        for s in station_list:
+            data.append({
+                'lat': s.location.y,
+                'lng': s.location.x,
+                'count': s.booking_count,
+                'intensity': s.booking_count / max_count,
+            })
+
+        return Response(data, status=status.HTTP_200_OK)

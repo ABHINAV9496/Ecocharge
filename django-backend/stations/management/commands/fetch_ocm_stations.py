@@ -141,7 +141,10 @@ class Command(BaseCommand):
             for c in connections:
                 ct = c.get('ConnectionType', {})
                 if ct.get('Title'):
-                    connector_types.append(ct['Title'])
+                    connector_types.append({
+                        'type': ct['Title'],
+                        'power_kw': c.get('PowerKW'),
+                    })
 
             status_title = ''
             st = s.get('StatusType')
