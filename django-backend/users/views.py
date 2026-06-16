@@ -6,6 +6,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from drf_spectacular.utils import extend_schema
 from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.utils.html import strip_tags
 from .serializers import RegisterSerializer, UserProfileSerializer
 from .models import CustomUser
 
@@ -20,6 +23,26 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+
+        # Send welcome email if SMTP is configured
+        if settings.EMAIL_HOST and user.email:
+            try:
+                html_content = render_to_string('emails/welcome.html', {
+                    'username': user.username,
+                    'map_url': 'http://localhost:5173/map',
+                })
+                text_content = strip_tags(html_content)
+                email = EmailMultiAlternatives(
+                    subject='Welcome to EcoCharge! ⚡',
+                    body=text_content,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[user.email],
+                )
+                email.attach_alternative(html_content, 'text/html')
+                email.send(fail_silently=False)
+            except Exception:
+                pass  # Email failure should not block registration
+
         return Response({
             'user': UserProfileSerializer(user).data,
             'message': f'Welcome to EcoCharge, {user.username}! Your account has been created.',

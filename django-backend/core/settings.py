@@ -197,6 +197,15 @@ OCM_API_KEY = '36724cbe-784d-4f27-98d9-4ea77febf7d1'
 # Google OAuth — set your Client ID here for production
 GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
 
+# Email / SMTP — set these in .env for welcome emails
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = env('EMAIL_HOST', default='')
+EMAIL_PORT = env.int('EMAIL_PORT', default=587)
+EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@ecocharge.com')
+
 # Celery settings
 CELERY_BROKER_URL = 'redis://redis:6379/0'
 CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
