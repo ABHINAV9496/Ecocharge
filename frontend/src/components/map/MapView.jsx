@@ -9,7 +9,9 @@ import { useAuth } from '../../context/AuthContext'
 import VehicleSelector from './VehicleSelector'
 import VehicleInfoPanel from './VehicleInfoPanel'
 import StationSidebar from './StationSidebar'
+import HeatmapLayer from './HeatmapLayer'
 import 'leaflet/dist/leaflet.css'
+import { computeRouteBounds } from '../../utils/route'
 
 delete L.Icon.Default.prototype._getIconUrl
 
@@ -109,6 +111,7 @@ export default function MapView(props) {
     onRoutePlan,
     routePlan,
     vehicle,
+    vehicles,
     batteryPercent,
     onVehicleChange,
     onBatteryChange,
@@ -122,7 +125,7 @@ export default function MapView(props) {
   var [userLocation, setUserLocation] = useState([9.9312, 76.2673])
   var [searchQuery, setSearchQuery] = useState('')
   var [locationQuery, setLocationQuery] = useState('')
-  var [searchRadius, setSearchRadius] = useState('all')
+  var [searchRadius, setSearchRadius] = useState(50)
   var [isLoading, setIsLoading] = useState(true)
   var [isError, setIsError] = useState(false)
   var [errorMessage, setErrorMessage] = useState('')
@@ -132,6 +135,11 @@ export default function MapView(props) {
   var [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
   var [showSettings, setShowSettings] = useState(false)
   var [showUserMenu, setShowUserMenu] = useState(false)
+  var [amenityFilter, setAmenityFilter] = useState([])
+  var [slotTypeFilter, setSlotTypeFilter] = useState([])
+  var [showFilters, setShowFilters] = useState(false)
+  var [showHeatmap, setShowHeatmap] = useState(false)
+  var [routeBounds, setRouteBounds] = useState(null)
   var searchTimer = useRef(null)
   var settingsRef = useRef(null)
   var userMenuRef = useRef(null)
@@ -140,17 +148,23 @@ export default function MapView(props) {
   var { user, logoutUser } = useAuth()
   var mapRef = useRef(null)
 
-  var loadStations = useCallback(async function (lat, lng, radius) {
+  var loadStations = useCallback(async function (lat, lng, radius, bounds) {
     setIsLoading(true)
     setIsError(false)
     setErrorMessage('')
     try {
       radius = radius || searchRadius
       var params = { include_ocm: 'true' }
-      if (lat && lng && radius !== 'all') {
+      if (lat && lng) {
         params.lat = lat
         params.lng = lng
         params.radius = radius
+      }
+      if (bounds) {
+        params.min_lat = bounds.minLat
+        params.max_lat = bounds.maxLat
+        params.min_lng = bounds.minLng
+        params.max_lng = bounds.maxLng
       }
       var response = await getStations(params)
       var data = response.data || []
@@ -179,20 +193,20 @@ export default function MapView(props) {
         function (position) {
           var loc = [position.coords.latitude, position.coords.longitude]
           setUserLocation(loc)
-          loadStations(loc[0], loc[1], searchRadius)
+          loadStations(loc[0], loc[1], 50)
         },
         function () {
-          loadStations(userLocation[0], userLocation[1], searchRadius)
+          loadStations(userLocation[0], userLocation[1], 50)
         },
         { enableHighAccuracy: true, timeout: 10000 }
       )
     } else {
-      loadStations(userLocation[0], userLocation[1], searchRadius)
+      loadStations(userLocation[0], userLocation[1], 50)
     }
   }, [])
 
   useEffect(function () {
-    if (stations.length > 0) {
+    if (stations.length > 0 && !routeBounds) {
       loadStations(userLocation[0], userLocation[1], searchRadius)
     }
   }, [searchRadius])
@@ -206,9 +220,17 @@ export default function MapView(props) {
     return function () { document.removeEventListener('mousedown', handleClick) }
   }, [])
 
+  useEffect(function () {
+    if (routePlan && routePlan.route && routePlan.route.length > 1) {
+      var coords = routePlan.route.map(function (c) { return [c[1], c[0]] })
+      focusOnRoute(coords)
+    }
+  }, [routePlan])
+
   function handleBookingSuccess(message) {
     setBookingMessage(message)
     setTimeout(function () { setBookingMessage(null) }, 3000)
+    setRouteBounds(null)
     loadStations(userLocation[0], userLocation[1], searchRadius)
   }
 
@@ -217,6 +239,7 @@ export default function MapView(props) {
       navigator.geolocation.getCurrentPosition(function (position) {
         var loc = [position.coords.latitude, position.coords.longitude]
         setUserLocation(loc)
+        setRouteBounds(null)
         loadStations(loc[0], loc[1], searchRadius)
         if (mapRef.current) mapRef.current.flyTo(loc, 13)
       })
@@ -225,6 +248,33 @@ export default function MapView(props) {
 
   function handleRetry() {
     loadStations(userLocation[0], userLocation[1], searchRadius)
+  }
+
+  function focusOnRoute(coordinates) {
+    if (!coordinates || coordinates.length === 0) {
+      setRouteBounds(null)
+      return
+    }
+    var minLat = Infinity, maxLat = -Infinity
+    var minLng = Infinity, maxLng = -Infinity
+    for (var i = 0; i < coordinates.length; i++) {
+      var lat = coordinates[i][1]
+      var lng = coordinates[i][0]
+      if (lat < minLat) minLat = lat
+      if (lat > maxLat) maxLat = lat
+      if (lng < minLng) minLng = lng
+      if (lng > maxLng) maxLng = lng
+    }
+    var centerLat = (minLat + maxLat) / 2
+    var centerLng = (minLng + maxLng) / 2
+    var latSpan = maxLat - minLat
+    var lngSpan = maxLng - minLng
+    var radiusKm = Math.max(latSpan, lngSpan / Math.cos(centerLat * Math.PI / 180)) * 111 / 2 + 50
+    setRouteBounds({ minLat: minLat - 0.5, maxLat: maxLat + 0.5, minLng: minLng - 0.5, maxLng: maxLng + 0.5 })
+    loadStations(centerLat, centerLng, Math.max(radiusKm, 100))
+    if (mapRef.current) {
+      mapRef.current.flyTo([centerLat, centerLng], Math.max(6, Math.round(12 - latSpan * 30)))
+    }
   }
 
   var filteredStations = useMemo(function () {
@@ -241,9 +291,22 @@ export default function MapView(props) {
         passesSearch = (station.name || '').toLowerCase().indexOf(q) !== -1 ||
                        (station.address || '').toLowerCase().indexOf(q) !== -1
       }
-      return passesStatus && passesSearch
+      var passesAmenity = true
+      if (amenityFilter.length > 0) {
+        var stationAmenities = (station.amenities || []).map(function (a) { return a.toLowerCase() })
+        passesAmenity = amenityFilter.every(function (a) {
+          return stationAmenities.indexOf(a.toLowerCase()) !== -1
+        })
+      }
+      var passesSlotType = true
+      if (slotTypeFilter.length > 0 && station.slots) {
+        passesSlotType = station.slots.some(function (s) {
+          return slotTypeFilter.indexOf(s.slot_type) !== -1
+        })
+      }
+      return passesStatus && passesSearch && passesAmenity && passesSlotType
     })
-  }, [stations, statusFilter, searchQuery])
+  }, [stations, statusFilter, searchQuery, amenityFilter, slotTypeFilter])
 
   async function searchLocation() {
     if (!locationQuery.trim()) return
@@ -322,7 +385,7 @@ export default function MapView(props) {
               <FiChevronRight className="w-3 h-3 text-gray-400" />
             </button>
           )}
-          <VehicleSelector vehicle={vehicle} onSelect={onVehicleChange} />
+          <VehicleSelector vehicle={vehicle} onSelect={onVehicleChange} vehicles={props.vehicles} />
         </div>
 
         <div className="flex-1 max-w-xl mx-auto relative">
@@ -363,7 +426,7 @@ export default function MapView(props) {
             onChange={function (e) { setSearchRadius(e.target.value) }}
             className="bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-xl px-2.5 py-2.5 text-xs text-gray-300 outline-none shadow-lg cursor-pointer"
           >
-            <option value="all">All India</option>
+            <option value={100}>100 km</option>
             <option value={50}>50 km</option>
             <option value={25}>25 km</option>
             <option value={10}>10 km</option>
@@ -460,7 +523,122 @@ export default function MapView(props) {
             </button>
           )
         })}
+        <button
+          onClick={function () { setShowFilters(!showFilters) }}
+          className={
+            'px-2.5 py-1.5 text-[11px] font-medium rounded-lg transition-all flex items-center gap-1 ' +
+            (showFilters || amenityFilter.length > 0 || slotTypeFilter.length > 0
+              ? 'bg-emerald-600 text-white shadow-emerald-600/30'
+              : 'bg-gray-900/80 backdrop-blur-md text-gray-400 border border-gray-700 hover:bg-gray-800')
+          }
+        >
+          {amenityFilter.length > 0 || slotTypeFilter.length > 0 ? '(' + (amenityFilter.length + slotTypeFilter.length) + ')' : ''}
+          Filters
+        </button>
+        <button
+          onClick={function () { setShowHeatmap(!showHeatmap) }}
+          className={
+            'px-2.5 py-1.5 text-[11px] font-medium rounded-lg transition-all flex items-center gap-1 ' +
+            (showHeatmap
+              ? 'bg-orange-600 text-white shadow-orange-600/30'
+              : 'bg-gray-900/80 backdrop-blur-md text-gray-400 border border-gray-700 hover:bg-gray-800')
+          }
+          title="Usage heatmap"
+        >
+          Heat
+        </button>
       </div>
+
+      {/* Filter panel */}
+      {showFilters && (
+        <div className="absolute top-28 left-4 z-[1000] bg-gray-900/95 backdrop-blur-md border border-gray-700 rounded-xl p-3 shadow-2xl w-56">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">Amenities</span>
+            {amenityFilter.length > 0 && (
+              <button onClick={function () { setAmenityFilter([]) }} className="text-[10px] text-gray-500 hover:text-gray-300">
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {['WiFi', 'Restroom', 'Cafe', 'Parking', 'Security', 'Shop'].map(function (a) {
+              var active = amenityFilter.indexOf(a) !== -1
+              return (
+                <button
+                  key={a}
+                  onClick={function () {
+                    setAmenityFilter(active
+                      ? amenityFilter.filter(function (x) { return x !== a })
+                      : amenityFilter.concat([a])
+                    )
+                  }}
+                  className={
+                    'px-2 py-1 text-[10px] font-medium rounded-lg transition-all ' +
+                    (active
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700')
+                  }
+                >
+                  {a}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">Charger Type</span>
+            {slotTypeFilter.length > 0 && (
+              <button onClick={function () { setSlotTypeFilter([]) }} className="text-[10px] text-gray-500 hover:text-gray-300">
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { id: 'AC_SLOW', label: 'AC Slow' },
+              { id: 'AC_FAST', label: 'AC Fast' },
+              { id: 'DC_FAST', label: 'DC Fast' },
+              { id: 'DC_ULTRA', label: 'DC Ultra' },
+            ].map(function (t) {
+              var active = slotTypeFilter.indexOf(t.id) !== -1
+              return (
+                <button
+                  key={t.id}
+                  onClick={function () {
+                    setSlotTypeFilter(active
+                      ? slotTypeFilter.filter(function (x) { return x !== t.id })
+                      : slotTypeFilter.concat([t.id])
+                    )
+                  }}
+                  className={
+                    'px-2 py-1 text-[10px] font-medium rounded-lg transition-all ' +
+                    (active
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700')
+                  }
+                >
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* OCM data indicator */}
+      {stations.length > 0 && (function () {
+        var ocmCount = stations.filter(function (s) { return s.isOCM }).length
+        if (ocmCount === 0) return null
+        var latest = stations
+          .filter(function (s) { return s.isOCM && s.last_updated })
+          .sort(function (a, b) { return new Date(b.last_updated) - new Date(a.last_updated) })
+        var dateStr = latest.length > 0 ? new Date(latest[0].last_updated).toLocaleDateString() : ''
+        return (
+          <div className="absolute bottom-20 left-4 z-[1000] bg-gray-900/70 backdrop-blur-md rounded-lg px-3 py-1.5 text-[11px] text-gray-400 border border-gray-700">
+            OCM: {ocmCount} stations{dateStr ? ' · ' + dateStr : ''}
+          </div>
+        )
+      })()}
 
       {/* Vehicle info panel — left side (only when no planner) */}
       {!showPlanner && (
@@ -572,6 +750,7 @@ export default function MapView(props) {
             </Marker>
           )
         })}
+        <HeatmapLayer visible={showHeatmap} />
       </MapContainer>
 
       {/* Loading */}

@@ -200,6 +200,11 @@ export default function StationSidebar(props) {
                 {availableCount}/{totalCount} Available
               </span>
             </div>
+            {station.isOCM && (
+              <span className="px-2 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded-lg" title={station.last_updated ? 'OCM data refreshed: ' + new Date(station.last_updated).toLocaleDateString() : 'Open Charge Map data'}>
+                OCM
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -314,11 +319,18 @@ export default function StationSidebar(props) {
                                 key={slot.id}
                                 className={'p-3.5 border rounded-xl transition-all hover:shadow-md ' + slotStyle}
                               >
-                                {/* Row 1: Slot type badge + status badge */}
+                                  {/* Row 1: Slot type badge + status badge */}
                                 <div className="flex items-center justify-between mb-2">
-                                  <span className={'px-2 py-0.5 text-xs font-medium rounded-full ' + getSlotTypeColor(slot.slot_type)}>
-                                    {SLOT_TYPE_LABELS[slot.slot_type] || slot.slot_type}
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className={'px-2 py-0.5 text-xs font-medium rounded-full ' + getSlotTypeColor(slot.slot_type)}>
+                                      {SLOT_TYPE_LABELS[slot.slot_type] || slot.slot_type}
+                                    </span>
+                                    {slot.isOCM && slot.label && (
+                                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                                        {slot.label}
+                                      </span>
+                                    )}
+                                  </div>
                                   <span className={'px-2 py-0.5 text-xs font-medium rounded-full ' + statusStyle}>
                                     {slot.status === 'AVAILABLE' ? 'Available' :
                                      slot.status === 'OCCUPIED' ? 'In Use' : 'Offline'}

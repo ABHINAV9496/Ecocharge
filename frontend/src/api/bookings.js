@@ -27,3 +27,9 @@ export function getBooking(id) {
 export function cancelBooking(id) {
   return apiClient.delete('/api/bookings/' + id + '/')
 }
+
+// Get heatmap data for the map — returns station usage intensity
+// Accepts optional days parameter (default: 90)
+export function getHeatmapData(days) {
+  return apiClient.get('/api/bookings/heatmap/', { params: { days: days || 90 } })
+}

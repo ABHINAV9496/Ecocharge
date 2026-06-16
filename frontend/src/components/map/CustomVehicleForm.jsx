@@ -18,7 +18,7 @@ export default function CustomVehicleForm(props) {
     setForm(function (prev) { return { ...prev, [field]: value } })
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     var vehicle = {
       make: form.make.trim(),
@@ -28,13 +28,15 @@ export default function CustomVehicleForm(props) {
       consumption_wh_per_km: parseFloat(form.consumption_wh_per_km),
       fast_charge_kw: parseFloat(form.fast_charge_kw) || 0,
       ac_charge_kw: parseFloat(form.ac_charge_kw) || 0,
-      image: '',
-      isCustom: true,
     }
     if (!vehicle.make || !vehicle.model || !vehicle.battery_kwh || !vehicle.consumption_wh_per_km) return
-    var saved = addCustomVehicle(vehicle)
-    onAdded(saved)
-    onClose()
+    try {
+      var saved = await addCustomVehicle(vehicle)
+      onAdded(saved)
+      onClose()
+    } catch (err) {
+      console.error('Failed to save custom vehicle:', err)
+    }
   }
 
   var inputClass = 'w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-emerald-500 transition-colors'

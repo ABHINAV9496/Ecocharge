@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react'
-import { FiNavigation, FiMapPin, FiZap, FiClock, FiX, FiChevronLeft } from 'react-icons/fi'
+import { FiNavigation, FiMapPin, FiZap, FiClock, FiX, FiChevronLeft, FiCheck } from 'react-icons/fi'
 import VehicleSelector from './VehicleSelector'
-import { getEstimatedRange, getVehicleById } from '../../data/vehicleProfiles'
+import { getEstimatedRange } from '../../data/vehicleProfiles'
 import { searchLocations } from '../../api/geocode'
+import { generateRouteOptions, findChargingStops } from '../../utils/route'
 
 var OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
 
@@ -19,7 +20,7 @@ function formatDistance(meters) {
 }
 
 export default function RoutePlanner(props) {
-  var { vehicle, setVehicle, stations, batteryPercent, onRoutePlan, routePlan, onClose } = props
+  var { vehicle, setVehicle, vehicles, stations, batteryPercent, onRoutePlan, routePlan, onClose } = props
 
   var [origin, setOrigin] = useState('')
   var [destination, setDestination] = useState('')
@@ -31,6 +32,8 @@ export default function RoutePlanner(props) {
   var [showDestResults, setShowDestResults] = useState(false)
   var [originSuggestions, setOriginSuggestions] = useState([])
   var [destSuggestions, setDestSuggestions] = useState([])
+  var [routeOptions, setRouteOptions] = useState([])
+  var [selectedOptionId, setSelectedOptionId] = useState(null)
   var originTimer = useRef(null)
   var destTimer = useRef(null)
 
@@ -108,19 +111,24 @@ export default function RoutePlanner(props) {
       var distanceM = route.distance
       var durationS = route.duration
 
-      var stops = findChargingStops(coordinates, distanceM, vehicle, batteryPercent, stations)
+      var routeOptions = generateRouteOptions(coordinates, distanceM, vehicle, batteryPercent, stations)
+      var selectedOption = routeOptions[0] || { stops: [] }
 
       var plan = {
         route: coordinates,
         distance: distanceM,
         duration: durationS,
-        stops: stops,
+        stops: selectedOption.stops,
+        routeOptions: routeOptions,
+        selectedOptionId: selectedOption.id,
         origin: originCoords,
         destination: destCoords,
         originName: origin,
         destName: destination,
       }
 
+      setRouteOptions(routeOptions)
+      setSelectedOptionId(selectedOption.id)
       onRoutePlan(plan)
       setLoading(false)
     } catch (e) {
@@ -130,12 +138,33 @@ export default function RoutePlanner(props) {
     }
   }
 
+  function selectRouteOption(optionId) {
+    var option = routeOptions.find(function (o) { return o.id === optionId })
+    if (!option) return
+    setSelectedOptionId(optionId)
+    var plan = {
+      route: routePlan.route,
+      distance: routePlan.distance,
+      duration: routePlan.duration,
+      stops: option.stops,
+      routeOptions: routeOptions,
+      selectedOptionId: optionId,
+      origin: routePlan.origin,
+      destination: routePlan.destination,
+      originName: routePlan.originName,
+      destName: routePlan.destName,
+    }
+    onRoutePlan(plan)
+  }
+
   function clearRoute() {
     onRoutePlan(null)
     setOrigin('')
     setDestination('')
     setOriginCoords(null)
     setDestCoords(null)
+    setRouteOptions([])
+    setSelectedOptionId(null)
   }
 
   return (
@@ -217,7 +246,7 @@ export default function RoutePlanner(props) {
         {/* Vehicle */}
         <div>
           <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1.5 block">Vehicle</label>
-          <VehicleSelector vehicle={vehicle} onSelect={setVehicle} />
+          <VehicleSelector vehicle={vehicle} onSelect={setVehicle} vehicles={vehicles} />
         </div>
 
         {/* Battery (compact) */}
@@ -290,7 +319,56 @@ export default function RoutePlanner(props) {
                   {routePlan.stops.length}
                 </span>
               </div>
+              {(function () {
+                var totalChargeSec = routePlan.stops.reduce(function (s, stop) { return s + (stop.chargeTime || 0) }, 0)
+                if (totalChargeSec <= 0) return null
+                return (
+                  <div className="flex items-center justify-between text-xs pt-1.5 border-t border-emerald-500/10">
+                    <span className="text-gray-400">Total trip time</span>
+                    <span className="text-white font-medium">
+                      {formatDuration(routePlan.duration + totalChargeSec)}
+                      <span className="text-gray-500 font-normal"> (drive + {formatDuration(totalChargeSec)} charge)</span>
+                    </span>
+                  </div>
+                )
+              })()}
             </div>
+
+            {/* Route options */}
+            {routeOptions.length > 1 && (
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-2 block">Route Options</label>
+                <div className="space-y-1.5">
+                  {routeOptions.map(function (opt) {
+                    var active = opt.id === selectedOptionId
+                    return (
+                      <button
+                        key={opt.id}
+                        onClick={function () { selectRouteOption(opt.id) }}
+                        className={
+                          'w-full text-left p-2.5 rounded-lg border text-xs transition-all ' +
+                          (active
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                            : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-750 hover:border-gray-600')
+                        }
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {active && <FiCheck className="w-3 h-3 text-emerald-400" />}
+                            <span className={'font-medium ' + (active ? 'text-white' : '')}>{opt.label}</span>
+                          </div>
+                          <span className="text-gray-500">{opt.totalTime > 0 ? formatDuration(opt.totalTime * 3600) : ''}</span>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-gray-500">
+                          <span>{opt.description}</span>
+                          {opt.totalChargeTime > 0 && <span>{formatDuration(opt.totalChargeTime * 3600)} charging</span>}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Charging stops */}
             {routePlan.stops.length > 0 && (
@@ -353,80 +431,4 @@ export default function RoutePlanner(props) {
   )
 }
 
-function findChargingStops(routeCoords, totalDistanceM, vehicle, batteryPercent, stations) {
-  if (!stations || stations.length === 0 || !vehicle) return []
 
-  var totalKm = totalDistanceM / 1000
-  var usableKwh = vehicle.battery_kwh * (batteryPercent / 100) * 0.9
-  var rangeKm = (usableKwh / vehicle.consumption_wh_per_km) * 1000
-
-  if (rangeKm >= totalKm * 1.1) return []
-
-  var numStops = Math.ceil(totalKm / (rangeKm * 0.7))
-  if (numStops < 1) numStops = 1
-
-  var stops = []
-  var interval = numStops > 1 ? totalKm / numStops : totalKm * 0.5
-
-  for (var i = 1; i <= numStops; i++) {
-    var targetKm = interval * i
-    var fraction = targetKm / totalKm
-    if (fraction > 0.95) break
-
-    var idx = Math.floor(fraction * (routeCoords.length - 1))
-    var point = routeCoords[idx]
-    if (!point) continue
-
-    var nearest = findNearestStation(point, stations, 20)
-    if (nearest) {
-      var stopDist = Math.round(targetKm)
-      var arrivalSoC = Math.max(10, Math.round(100 - (interval * vehicle.consumption_wh_per_km / (vehicle.battery_kwh * 9))))
-      var chargeSeconds = 0
-      if (vehicle.fast_charge_kw > 0) {
-        var kwhNeeded = vehicle.battery_kwh * (0.8 - arrivalSoC / 100)
-        chargeSeconds = (kwhNeeded / vehicle.fast_charge_kw) * 3600
-      }
-      stops.push({
-        station: nearest,
-        name: nearest.name || nearest.address,
-        address: nearest.address,
-        lat: nearest.latitude,
-        lng: nearest.longitude,
-        distanceKm: stopDist,
-        arrivalSoC: arrivalSoC,
-        chargeTime: chargeSeconds,
-      })
-    }
-  }
-
-  return stops
-}
-
-function findNearestStation(point, stations, maxKm) {
-  var minDist = Infinity
-  var nearest = null
-  var lat1 = point[0]
-  var lng1 = point[1]
-
-  stations.forEach(function (s) {
-    if (!s.latitude || !s.longitude) return
-    var d = haversine(lat1, lng1, s.latitude, s.longitude)
-    if (d < minDist && d <= maxKm) {
-      minDist = d
-      nearest = s
-    }
-  })
-
-  return nearest
-}
-
-function haversine(lat1, lng1, lat2, lng2) {
-  var R = 6371
-  var dLat = (lat2 - lat1) * Math.PI / 180
-  var dLng = (lng2 - lng1) * Math.PI / 180
-  var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2)
-  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  return R * c
-}

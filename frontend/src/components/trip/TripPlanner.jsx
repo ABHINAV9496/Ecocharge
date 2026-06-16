@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { FiSearch, FiMapPin, FiBatteryCharging, FiNavigation, FiDollarSign, FiClock, FiSave } from 'react-icons/fi'
 import { MapContainer, TileLayer, Marker, Polyline, Popup } from 'react-leaflet'
 import L from 'leaflet'
@@ -7,6 +7,7 @@ import { createTrip } from '../../api/trips'
 import { formatCurrency } from '../../utils/formatters'
 import { useAuth } from '../../context/AuthContext'
 import { getVehicleById, DEFAULT_VEHICLE_ID } from '../../data/vehicleProfiles'
+import { findChargingStops } from '../../utils/route'
 import 'leaflet/dist/leaflet.css'
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -46,7 +47,11 @@ export default function TripPlanner() {
   var [showDestSugg, setShowDestSugg] = useState(false)
   var originTimer = useRef(null)
   var destTimer = useRef(null)
-  var vehicle = getVehicleById(DEFAULT_VEHICLE_ID)
+  var [vehicle, setVehicle] = useState(null)
+
+  useEffect(function () {
+    getVehicleById(DEFAULT_VEHICLE_ID).then(function (v) { setVehicle(v) })
+  }, [])
 
   async function geocode(query, type) {
     if (!query.trim()) {
@@ -325,50 +330,4 @@ export default function TripPlanner() {
   )
 }
 
-function findChargingStops(routeCoords, totalDistanceM, vehicle, batteryPercent, stations) {
-  if (!stations || stations.length === 0 || !vehicle) return []
-  var totalKm = totalDistanceM / 1000
-  var usableKwh = vehicle.battery_kwh * (batteryPercent / 100) * 0.9
-  var rangeKm = (usableKwh / vehicle.consumption_wh_per_km) * 1000
-  if (rangeKm >= totalKm * 1.1) return []
-  var numStops = Math.ceil(totalKm / (rangeKm * 0.7))
-  if (numStops < 1) numStops = 1
-  var stops = []
-  var interval = numStops > 1 ? totalKm / numStops : totalKm * 0.5
-  for (var i = 1; i <= numStops; i++) {
-    var targetKm = interval * i
-    var fraction = targetKm / totalKm
-    if (fraction > 0.95) break
-    var idx = Math.floor(fraction * (routeCoords.length - 1))
-    var point = routeCoords[idx]
-    if (!point) continue
-    var nearest = findNearestStation(point, stations, 20)
-    if (nearest) {
-      var stopDist = Math.round(targetKm)
-      var arrivalSoC = Math.max(10, Math.round(100 - (interval * vehicle.consumption_wh_per_km / (vehicle.battery_kwh * 9))))
-      var chargeSeconds = 0
-      if (vehicle.fast_charge_kw > 0) {
-        var kwhNeeded = vehicle.battery_kwh * (0.8 - arrivalSoC / 100)
-        chargeSeconds = (kwhNeeded / vehicle.fast_charge_kw) * 3600
-      }
-      stops.push({ station: nearest, name: nearest.name || nearest.address, address: nearest.address, lat: nearest.latitude, lng: nearest.longitude, distanceKm: stopDist, arrivalSoC: arrivalSoC, chargeTime: chargeSeconds, cost: chargeSeconds > 0 ? (chargeSeconds / 3600) * 10 : 0 })
-    }
-  }
-  return stops
-}
 
-function findNearestStation(point, stations, maxKm) {
-  var minDist = Infinity, nearest = null, lat1 = point[0], lng1 = point[1]
-  stations.forEach(function (s) {
-    if (!s.latitude || !s.longitude) return
-    var d = haversine(lat1, lng1, s.latitude, s.longitude)
-    if (d < minDist && d <= maxKm) { minDist = d; nearest = s }
-  })
-  return nearest
-}
-
-function haversine(lat1, lng1, lat2, lng2) {
-  var R = 6371, dLat = (lat2 - lat1) * Math.PI / 180, dLng = (lng2 - lng1) * Math.PI / 180
-  var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}

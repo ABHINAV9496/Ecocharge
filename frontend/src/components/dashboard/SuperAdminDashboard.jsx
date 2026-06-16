@@ -13,8 +13,8 @@
 */
 
 import { useState, useEffect } from 'react'
-import { FiUsers, FiMapPin, FiCalendar, FiDollarSign, FiTrendingUp } from 'react-icons/fi'
-import { getStations } from '../../api/stations'
+import { FiUsers, FiMapPin, FiCalendar, FiDollarSign, FiTrendingUp, FiRefreshCw } from 'react-icons/fi'
+import { getStations, refreshOCM } from '../../api/stations'
 import { getBookings } from '../../api/bookings'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
@@ -28,6 +28,8 @@ export default function SuperAdminDashboard() {
   var [bookings, setBookings] = useState([])    // All bookings on the platform
   var [loading, setLoading] = useState(true)    // Loading indicator
   var [error, setError] = useState('')          // Error message
+  var [refreshing, setRefreshing] = useState(false)  // OCM refresh in progress
+  var [refreshMsg, setRefreshMsg] = useState('')     // OCM refresh result message
 
   // ---- FETCH DATA ON MOUNT ----
   useEffect(function () {
@@ -49,7 +51,35 @@ export default function SuperAdminDashboard() {
     loadData()
   }, [])
 
+  // ---- OCM REFRESH ----
+  async function handleRefreshOCM() {
+    setRefreshing(true)
+    setRefreshMsg('')
+    try {
+      var response = await refreshOCM()
+      setRefreshMsg('OCM data refreshed: ' + response.data.total_stations + ' stations')
+      var stationsResponse = await getStations()
+      setStations(stationsResponse.data)
+    } catch (error) {
+      var msg = 'Refresh failed'
+      if (error.response && error.response.data && error.response.data.error) {
+        msg = error.response.data.error
+      }
+      setRefreshMsg(msg)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   // ---- COMPUTED STATS ----
+  var ocmStations = stations.filter(function (s) { return s.isOCM })
+  var localStations = stations.filter(function (s) { return !s.isOCM })
+  var latestOCMUpdate = ocmStations.length > 0
+    ? ocmStations.reduce(function (latest, s) {
+        return s.last_updated && s.last_updated > latest ? s.last_updated : latest
+      }, ocmStations[0].last_updated || '')
+    : null
+
   var stats = {
     totalStations: stations.length,
     totalSlots: stations.reduce(function (sum, station) {
@@ -125,6 +155,40 @@ export default function SuperAdminDashboard() {
             </div>
           )
         })}
+      </div>
+
+      {/* ---- OCM DATA CARD ---- */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/40 rounded-xl flex items-center justify-center">
+              <FiMapPin className="w-5 h-5 text-blue-500" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Open Charge Map Data</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {ocmStations.length} OCM stations cached
+                {localStations.length > 0 && ' · ' + localStations.length + ' local stations'}
+                {latestOCMUpdate && ' · Last refreshed: ' + new Date(latestOCMUpdate).toLocaleDateString()}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleRefreshOCM}
+            disabled={refreshing}
+            className={'flex items-center gap-1.5 px-4 py-2 text-xs font-medium rounded-xl transition-all ' + (refreshing
+              ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
+              : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50')}
+          >
+            <FiRefreshCw className={'w-3.5 h-3.5 ' + (refreshing ? 'animate-spin' : '')} />
+            {refreshing ? 'Refreshing...' : 'Refresh OCM Data'}
+          </button>
+        </div>
+        {refreshMsg && (
+          <p className={'mt-2 text-xs ' + (refreshMsg.includes('failed') || refreshMsg.includes('error') ? 'text-red-500' : 'text-emerald-500')}>
+            {refreshMsg}
+          </p>
+        )}
       </div>
 
       {/* ---- CHARTS SECTION ---- */}

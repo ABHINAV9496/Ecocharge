@@ -52,3 +52,8 @@ export function updateSlot(stationId, slotId, data) {
 export function deleteSlot(stationId, slotId) {
   return apiClient.delete('/api/stations/' + stationId + '/slots/' + slotId + '/')
 }
+
+// Trigger OCM data refresh (Super Admin only)
+export function refreshOCM() {
+  return apiClient.post('/api/stations/refresh-ocm/')
+}
