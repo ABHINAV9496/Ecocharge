@@ -256,40 +256,42 @@ export default function Register() {
             </div>
           </div>
 
-          {/* SECTION 3: Vehicle Information */}
-          <div className="mb-6">
-            <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
-              Vehicle Information
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              {/* Car Model */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Car Model</label>
-                <div className="relative">
-                  <FiTruck className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          {/* SECTION 3: Vehicle Information (Drivers only) */}
+          {form.role === 'DRIVER' && (
+            <div className="mb-6">
+              <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
+                Vehicle Information
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                {/* Car Model */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Car Model</label>
+                  <div className="relative">
+                    <FiTruck className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={form.car_model}
+                      onChange={function (e) { updateField('car_model', e.target.value) }}
+                      placeholder="e.g. Tata Nexon EV"
+                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Battery Capacity */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Battery (kWh)</label>
                   <input
-                    type="text"
-                    value={form.car_model}
-                    onChange={function (e) { updateField('car_model', e.target.value) }}
-                    placeholder="e.g. Tata Nexon EV"
-                    className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                    type="number"
+                    step="0.1"
+                    value={form.battery_capacity_kwh}
+                    onChange={function (e) { updateField('battery_capacity_kwh', parseFloat(e.target.value)) }}
+                    className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                   />
                 </div>
               </div>
-
-              {/* Battery Capacity */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Battery (kWh)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={form.battery_capacity_kwh}
-                  onChange={function (e) { updateField('battery_capacity_kwh', parseFloat(e.target.value)) }}
-                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-                />
-              </div>
             </div>
-          </div>
+          )}
 
           {/* SUBMIT BUTTON */}
           <button
