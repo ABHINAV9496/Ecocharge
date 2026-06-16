@@ -47,6 +47,7 @@ export default function Login() {
         window.google.accounts.id.initialize({
           client_id: GOOGLE_CLIENT_ID,
           callback: handleGoogleResponse,
+          locale: 'en_US',
         })
         window.google.accounts.id.renderButton(googleBtnRef.current, {
           theme: 'outline',

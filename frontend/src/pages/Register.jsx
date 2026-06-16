@@ -20,7 +20,7 @@
 */
 
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { FiBatteryCharging, FiUser, FiMail, FiLock, FiSmartphone, FiTruck, FiArrowRight } from 'react-icons/fi'
 import { useAuth } from '../context/AuthContext'
 import { register as registerApi, login as loginApi } from '../api/auth'
@@ -42,9 +42,6 @@ export default function Register() {
   var [isLoading, setIsLoading] = useState(false)
   var [welcomeMessage, setWelcomeMessage] = useState('')
   var redirectTimerRef = useRef(null)
-
-  var { loginUser } = useAuth()
-  var navigate = useNavigate()
 
   // Update a single field in the form when the user types
   function updateField(fieldName, value) {
@@ -100,14 +97,19 @@ export default function Register() {
       })
 
       var data = loginResponse.data
-      loginUser(data.user, data.access, data.refresh)
+      // Store tokens directly without updating AuthContext
+      // (AuthContext update triggers immediate redirect via App.jsx route guard)
+      localStorage.setItem('access_token', data.access)
+      localStorage.setItem('refresh_token', data.refresh)
+      localStorage.setItem('user', JSON.stringify(data.user))
 
       // Step 3: Show welcome message overlay
       setWelcomeMessage(welcomeMsg)
 
-      // Step 4: Auto-redirect after 4 seconds
+      // Step 4: Auto-redirect after 4 seconds via full page load
+      // (full page load lets AuthContext pick up tokens from localStorage)
       redirectTimerRef.current = setTimeout(function () {
-        navigate('/map')
+        window.location.href = '/map'
       }, 4000)
 
     } catch (error) {
