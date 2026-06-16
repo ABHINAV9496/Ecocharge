@@ -38,3 +38,8 @@ export function updateProfile(data) {
 export function refreshToken(refresh) {
   return apiClient.post('/api/auth/token/refresh/', { refresh: refresh })
 }
+
+// Login with Google ID token (received from Google Sign-In)
+export function googleLogin(idToken) {
+  return apiClient.post('/api/auth/google/', { id_token: idToken })
+}

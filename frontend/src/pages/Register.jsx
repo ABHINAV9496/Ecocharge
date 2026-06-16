@@ -19,7 +19,7 @@
   The Django RegisterSerializer requires it for validation.
 */
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { FiBatteryCharging, FiUser, FiMail, FiLock, FiSmartphone, FiTruck, FiArrowRight } from 'react-icons/fi'
 import { useAuth } from '../context/AuthContext'
@@ -40,6 +40,8 @@ export default function Register() {
 
   var [errorMessage, setErrorMessage] = useState('')
   var [isLoading, setIsLoading] = useState(false)
+  var [welcomeMessage, setWelcomeMessage] = useState('')
+  var redirectTimerRef = useRef(null)
 
   var { loginUser } = useAuth()
   var navigate = useNavigate()
@@ -52,6 +54,15 @@ export default function Register() {
   }
 
   // Called when the form is submitted
+  // Clean up the redirect timer on unmount
+  useEffect(function () {
+    return function () {
+      if (redirectTimerRef.current) {
+        clearTimeout(redirectTimerRef.current)
+      }
+    }
+  }, [])
+
   async function handleSubmit(event) {
     event.preventDefault()  // Don't reload the page
     setErrorMessage('')
@@ -79,7 +90,8 @@ export default function Register() {
       }
 
       // Step 1: Register the user
-      await registerApi(payload)
+      var registerResponse = await registerApi(payload)
+      var welcomeMsg = registerResponse.data.message || ''
 
       // Step 2: Auto-login after successful registration
       var loginResponse = await loginApi({
@@ -90,8 +102,13 @@ export default function Register() {
       var data = loginResponse.data
       loginUser(data.user, data.access, data.refresh)
 
-      // Step 3: Redirect to the map
-      navigate('/map')
+      // Step 3: Show welcome message overlay
+      setWelcomeMessage(welcomeMsg)
+
+      // Step 4: Auto-redirect after 4 seconds
+      redirectTimerRef.current = setTimeout(function () {
+        navigate('/map')
+      }, 4000)
 
     } catch (error) {
       // Show a user-friendly error message from the backend
@@ -311,6 +328,26 @@ export default function Register() {
             </Link>
           </p>
         </form>
+
+        {/* WELCOME OVERLAY */}
+        {welcomeMessage && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl p-8 max-w-md w-full shadow-2xl text-center border border-emerald-200 dark:border-emerald-800">
+              <div className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/30">
+                <span className="text-3xl">🎉</span>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+                Welcome to EcoCharge!
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
+                {welcomeMessage}
+              </p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 mt-4">
+                Redirecting to the map...
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
