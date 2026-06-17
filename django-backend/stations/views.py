@@ -5,13 +5,10 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.gis.geos import Point, Polygon
 from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.measure import D
-from django.core.management import call_command
-from io import StringIO
 from drf_spectacular.utils import extend_schema
-from .models import ChargingStation, ChargingSlot, CachedOCMStation
+from .models import ChargingStation, ChargingSlot
 from .serializers import (
     ChargingStationSerializer,
-    CachedOCMStationSerializer,
     CreateStationSerializer,
     ChargingSlotSerializer
 )
@@ -22,7 +19,6 @@ class StationListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        include_ocm = request.query_params.get('include_ocm', 'true').lower() == 'true'
         lat = request.query_params.get('lat')
         lng = request.query_params.get('lng')
         radius = request.query_params.get('radius')
@@ -63,33 +59,8 @@ class StationListView(APIView):
                 ))
             )
 
-        merged = list(ChargingStationSerializer(stations, many=True).data)
-
-        if include_ocm:
-            ocm_stations = CachedOCMStation.objects.all()
-            if station_status:
-                ocm_stations = ocm_stations.filter(status=station_status.upper())
-            if min_lat and max_lat and min_lng and max_lng:
-                ocm_stations = ocm_stations.filter(
-                    latitude__gte=float(min_lat), latitude__lte=float(max_lat),
-                    longitude__gte=float(min_lng), longitude__lte=float(max_lng)
-                )
-            if lat and lng and radius:
-                from math import radians, sin, cos, sqrt, atan2
-                rad = float(radius)
-                filtered_ocm = []
-                for ocm in ocm_stations:
-                    dlat = radians(ocm.latitude - float(lat))
-                    dlng = radians(ocm.longitude - float(lng))
-                    a = sin(dlat / 2) ** 2 + cos(radians(float(lat))) * cos(radians(ocm.latitude)) * sin(dlng / 2) ** 2
-                    c = 2 * atan2(sqrt(a), sqrt(1 - a))
-                    dist = 6371 * c
-                    if dist <= rad:
-                        filtered_ocm.append(ocm)
-                ocm_stations = filtered_ocm
-            merged.extend(CachedOCMStationSerializer(ocm_stations, many=True).data)
-
-        return Response(merged, status=status.HTTP_200_OK)
+        serializer = ChargingStationSerializer(stations, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
         if request.user.role not in ['STATION_OWNER', 'SUPER_ADMIN']:
@@ -265,34 +236,48 @@ class SlotDetailView(APIView):
 
 
 @extend_schema(tags=['Stations'])
-class AdminRefreshOCMView(APIView):
-    permission_classes = [IsAuthenticated]
+class StationBatchView(APIView):
+    permission_classes = [AllowAny]
 
     def post(self, request):
-        if request.user.role != 'SUPER_ADMIN':
-            return Response(
-                {'error': 'Only Super Admins can refresh OCM data'},
-                status=status.HTTP_403_FORBIDDEN
+        points = request.data.get('points', [])
+        radius = request.data.get('radius', 20)
+        if not points or not isinstance(points, list):
+            return Response({'error': 'points must be a list of {lat,lng} objects'}, status=400)
+        all_ids = {}
+        results = []
+        for pt in points:
+            lat = pt.get('lat')
+            lng = pt.get('lng')
+            if lat is None or lng is None:
+                continue
+            user_location = Point(float(lng), float(lat), srid=4326)
+            qs = ChargingStation.objects.filter(
+                location__distance_lte=(user_location, D(km=float(radius)))
             )
-        try:
-            from django.conf import settings
-            api_key = getattr(settings, 'OCM_API_KEY', None)
-            if not api_key:
-                return Response(
-                    {'error': 'OCM_API_KEY not configured on server'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            buf = StringIO()
-            call_command('fetch_ocm_stations', '--api-key=' + api_key, stdout=buf, stderr=buf)
-            output = buf.getvalue()
-            count = CachedOCMStation.objects.count()
-            return Response({
-                'message': 'OCM data refreshed successfully',
-                'total_stations': count,
-                'output': output,
-            }, status=status.HTTP_200_OK)
-        except Exception as e:
-            return Response(
-                {'error': 'Failed to refresh OCM data: ' + str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            for s in qs:
+                if s.id not in all_ids:
+                    all_ids[s.id] = True
+                    results.append(s)
+        serializer = ChargingStationSerializer(results, many=True)
+        return Response({'stations': serializer.data, 'count': len(serializer.data)})
+
+
+@extend_schema(tags=['Stations'])
+class StationByRouteView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        waypoints = request.data.get('waypoints', [])
+        radius = request.data.get('radius', 20)
+        if not waypoints or len(waypoints) < 2:
+            return Response({'error': 'At least 2 waypoints [lat, lng] required'}, status=400)
+
+        from django.contrib.gis.geos import LineString
+        line = LineString([(float(w[1]), float(w[0])) for w in waypoints], srid=4326)
+        corridor = line.buffer(float(radius) / 111.0)
+
+        stations = ChargingStation.objects.filter(location__within=corridor)
+        serializer = ChargingStationSerializer(stations, many=True)
+        return Response({'stations': serializer.data, 'count': len(serializer.data)})
+
