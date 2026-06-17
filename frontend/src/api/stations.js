@@ -53,7 +53,13 @@ export function deleteSlot(stationId, slotId) {
   return apiClient.delete('/api/stations/' + stationId + '/slots/' + slotId + '/')
 }
 
-// Trigger OCM data refresh (Super Admin only)
-export function refreshOCM() {
-  return apiClient.post('/api/stations/refresh-ocm/')
+// Batch fetch stations by multiple lat/lng points (for route corridor)
+export function getStationsBatch(points, radius) {
+  return apiClient.post('/api/stations/batch/', { points: points, radius: radius || 20 })
 }
+
+// Get route-optimized stations (sorted by distance from route)
+export function getRouteStations(waypoints, radius) {
+  return apiClient.post('/api/stations/by_route/', { waypoints: waypoints, radius: radius || 20 })
+}
+

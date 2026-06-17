@@ -1,55 +1,83 @@
-export const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 2,
-  }).format(amount)
+export function formatChargeTime(seconds) {
+  if (seconds < 60) return '< 1 min'
+  var mins = Math.round(seconds / 60)
+  if (mins < 60) return mins + ' min'
+  var h = Math.floor(mins / 60)
+  var m = mins % 60
+  return h + 'h ' + (m > 0 ? m + 'm' : '')
+}
 
-export const formatDate = (date) =>
-  new Intl.DateTimeFormat('en-IN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(date))
+export function formatSoC(value) {
+  return (value || 0) + '%'
+}
 
-export const getSlotTypeColor = (type) => {
-  const colors = {
-    AC_SLOW: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-    AC_FAST: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-    DC_FAST: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-    DC_ULTRA: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+export function formatMoney(amount) {
+  return '\u20B9 ' + (Math.round(amount * 100) / 100).toLocaleString('en-IN')
+}
+
+export function formatDistance(km) {
+  if (km < 1) return Math.round(km * 1000) + ' m'
+  return km.toFixed(1) + ' km'
+}
+
+export function formatHours(value) {
+  var h = Math.floor(value)
+  var m = Math.round((value - h) * 60)
+  return h + 'h ' + m + 'm'
+}
+
+export function stationStatusColor(status) {
+  switch ((status || '').toLowerCase()) {
+    case 'active': return '#22c55e'
+    case 'inactive': return '#ef4444'
+    case 'maintenance': return '#f59e0b'
+    case 'coming_soon': return '#3b82f6'
+    default: return '#6b7280'
   }
-  return colors[type] || 'bg-gray-100 text-gray-800'
 }
 
-export const getStatusColor = (status) => {
-  const colors = {
-    AVAILABLE: 'text-green-600 dark:text-green-400',
-    OCCUPIED: 'text-orange-600 dark:text-orange-400',
-    FAULT: 'text-red-600 dark:text-red-400',
-    ACTIVE: 'text-green-600 dark:text-green-400',
-    INACTIVE: 'text-gray-600 dark:text-gray-400',
-    MAINTENANCE: 'text-yellow-600 dark:text-yellow-400',
+export function slotTypeLabel(slotType) {
+  var labels = {
+    DC_ULTRA: 'DC Ultra (150 kW)',
+    DC_FAST: 'DC Fast (50 kW)',
+    AC_FAST: 'AC Fast (7.4 kW)',
+    AC_SLOW: 'AC Slow (3.3 kW)',
   }
-  return colors[status] || 'text-gray-600'
+  return labels[slotType] || slotType || 'Unknown'
 }
 
-export const getMarkerColor = (status) => {
-  if (status === 'ACTIVE') return 'green'
-  if (status === 'INACTIVE') return 'gray'
-  if (status === 'MAINTENANCE') return 'orange'
-  return 'blue'
+// Legacy aliases for backward compatibility
+
+export function formatCurrency(amount) {
+  if (amount == null || isNaN(amount)) return '\u20B9 0.00'
+  return '\u20B9 ' + Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-export const SLOT_TYPE_LABELS = {
-  AC_SLOW: 'AC Slow (3.3kW)',
-  AC_FAST: 'AC Fast (7.4kW)',
-  DC_FAST: 'DC Fast (50kW)',
-  DC_ULTRA: 'DC Ultra (150kW)',
+export function formatDate(dateStr) {
+  if (!dateStr) return ''
+  var d = new Date(dateStr)
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-export const ROLE_LABELS = {
-  SUPER_ADMIN: 'Super Admin',
-  STATION_OWNER: 'Station Owner',
+export function getSlotTypeColor(slotType) {
+  var colors = {
+    DC_ULTRA: { bg: '#1e40af', text: '#dbeafe', border: '#3b82f6' },
+    DC_FAST: { bg: '#065f46', text: '#d1fae5', border: '#10b981' },
+    AC_FAST: { bg: '#92400e', text: '#fef3c7', border: '#f59e0b' },
+    AC_SLOW: { bg: '#6b7280', text: '#f3f4f6', border: '#9ca3af' },
+  }
+  return colors[slotType] || colors.AC_SLOW
+}
+
+export var SLOT_TYPE_LABELS = {
+  DC_ULTRA: 'DC Ultra (150 kW)',
+  DC_FAST: 'DC Fast (50 kW)',
+  AC_FAST: 'AC Fast (7.4 kW)',
+  AC_SLOW: 'AC Slow (3.3 kW)',
+}
+
+export var ROLE_LABELS = {
   DRIVER: 'Driver',
-  GUEST: 'Guest',
+  STATION_OWNER: 'Station Owner',
+  SUPER_ADMIN: 'Admin',
 }
