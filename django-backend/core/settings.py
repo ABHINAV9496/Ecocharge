@@ -191,9 +191,6 @@ SPECTACULAR_SETTINGS = {
     ],
 }
 
-# Open Charge Map API key
-OCM_API_KEY = '36724cbe-784d-4f27-98d9-4ea77febf7d1'
-
 # Google OAuth — set your Client ID here for production
 GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
 
