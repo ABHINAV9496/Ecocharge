@@ -17,37 +17,28 @@ delete L.Icon.Default.prototype._getIconUrl
 
 function createStationIcon(statusCode, isSelected) {
   var colors = {
-    ACTIVE: { from: '#22c55e', to: '#16a34a' },
-    MAINTENANCE: { from: '#f59e0b', to: '#d97706' },
-    INACTIVE: { from: '#9ca3af', to: '#6b7280' },
+    ACTIVE: { fill: '#22c55e', stroke: '#16a34a' },
+    MAINTENANCE: { fill: '#f59e0b', stroke: '#d97706' },
+    INACTIVE: { fill: '#9ca3af', stroke: '#6b7280' },
   }
 
   var c = colors[statusCode] || colors.ACTIVE
-  var size = isSelected ? 44 : 36
-  var gradId = 'pin-grad-' + statusCode + (isSelected ? '-sel' : '')
+  var r = isSelected ? 14 : 11
 
   var svg = [
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 36" width="', size, '" height="', Math.round(size * 1.5), '">',
-    '  <defs>',
-    '    <linearGradient id="', gradId, '" x1="0" y1="0" x2="0" y2="1">',
-    '      <stop offset="0%" stop-color="', c.from, '" />',
-    '      <stop offset="100%" stop-color="', c.to, '" />',
-    '    </linearGradient>',
-    '    <filter id="pin-shadow">',
-    '      <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-opacity="0.35" />',
-    '    </filter>',
-    '  </defs>',
-    isSelected ? '  <circle cx="12" cy="13" r="16" fill="none" stroke="' + c.from + '" stroke-width="2" opacity="0.2"><animate attributeName="r" values="14;20;14" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite"/></circle>' : '',
-    '  <path d="M12 2C6 2 2 7 2 13C2 20 8 28 12 34C16 28 22 20 22 13C22 7 18 2 12 2Z" fill="url(#', gradId, ')" filter="url(#pin-shadow)" stroke="rgba(255,255,255,0.3)" stroke-width="0.5"/>',
-    '  <path d="M12 8L7 15h3.8l-1 6.5 5.2-9h-4l1-6.5z" fill="white" stroke="rgba(0,0,0,0.08)" stroke-width="0.3"/>',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="', r * 2, '" height="', r * 2, '">',
+    isSelected ? '<circle cx="14" cy="14" r="18" fill="none" stroke="' + c.stroke + '" stroke-width="1.5" opacity="0.25"><animate attributeName="r" values="15;21;15" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite"/></circle>' : '',
+    '  <circle cx="14" cy="14" r="', r, '" fill="', c.fill, '" stroke="white" stroke-width="2.5" filter="url(#s)"/>',
+    '  <defs><filter id="s"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.3"/></filter></defs>',
+    '  <path d="M12 8l-4 7h3.5L10 20l6-8.5h-3.5L14 8z" fill="white"/>',
     '</svg>',
   ].join('')
 
   return L.divIcon({
     html: svg,
     className: '',
-    iconSize: [size, Math.round(size * 1.5)],
-    iconAnchor: [size / 2, Math.round(size * 1.5)],
+    iconSize: [r * 2, r * 2],
+    iconAnchor: [r, r],
   })
 }
 

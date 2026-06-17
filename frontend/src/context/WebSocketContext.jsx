@@ -1,120 +1,138 @@
-/*
-  WebSocket Context
-  -----------------
-  Manages real-time WebSocket connections for live slot status updates.
-
-  What it does:
-  - Connects to the Django Channels WebSocket for a specific station
-  - Receives live updates when slot status changes (Available → Occupied)
-  - Stores the latest status of each slot
-  - Auto-reconnects if the connection drops
-
-  How it works:
-  1. When a user clicks on a station, call connect(stationId)
-  2. The WebSocket sends slot updates every time the MQTT IoT sensors report a change
-  3. The statuses object always has the latest { slotId: "AVAILABLE"|"OCCUPIED"|"FAULT" }
-
-  Note: Without useCallback and useRef (which are advanced React features),
-  we use simple variables and functions that are easier to understand.
-*/
-
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 
 var WebSocketContext = createContext(null)
 
 export function WebSocketProvider(props) {
-  var children = props.children
-
-  // Store latest slot statuses as an object: { slotId: status }
-  // Example: { 5: "OCCUPIED", 8: "AVAILABLE" }
+  var ws = useRef(null)
+  var [connected, setConnected] = useState(false)
   var [statuses, setStatuses] = useState({})
+  var [stationUpdates, setStationUpdates] = useState({})
+  var listenersRef = useRef({})
+  var reconnectTimerRef = useRef(null)
+  var mountRef = useRef(true)
+  var stationIdsRef = useRef([])
+  var singleStationIdRef = useRef(null)
 
-  // Keep track of the WebSocket connection so we can close it later
-  // We store it in a state variable instead of useRef (simpler for beginners)
-  var [webSocket, setWebSocket] = useState(null)
-
-  // Connect to the WebSocket for a specific station
-  // stationId: the ID of the station to get live updates for
-  function connectToStation(stationId) {
-    // Close any existing connection first
-    if (webSocket) {
-      webSocket.close()
+  var subscribeToStations = useCallback(function (ids) {
+    stationIdsRef.current = ids || []
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({ type: 'subscribe', station_ids: ids }))
     }
+  }, [])
 
-    // Build the WebSocket URL based on the current page's protocol
-    // If the page uses HTTPS, WebSocket must use WSS (secure)
-    var protocol
-    if (window.location.protocol === 'https:') {
-      protocol = 'wss:'
-    } else {
-      protocol = 'ws:'
+  var connectToStation = useCallback(function (stationId) {
+    singleStationIdRef.current = stationId
+    stationIdsRef.current = stationId ? [stationId] : []
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.close()
     }
+  }, [])
 
-    var host = window.location.host
-    var url = protocol + '//' + host + '/ws/stations/' + stationId + '/slots/'
+  var disconnectFromStation = useCallback(function () {
+    singleStationIdRef.current = null
+    stationIdsRef.current = []
+    if (ws.current) ws.current.close()
+  }, [])
 
-    try {
-      // Create a new WebSocket connection
-      var ws = new WebSocket(url)
-
-      // When a message arrives from the server, update the slot status
-      ws.onmessage = function (event) {
-        try {
-          var data = JSON.parse(event.data)
-          // data looks like: { slot_id: 5, status: "OCCUPIED" }
-
-          // Update the status of just this one slot (keep other slots unchanged)
-          setStatuses(function (previousStatuses) {
-            var updatedStatuses = Object.assign({}, previousStatuses)
-            updatedStatuses[data.slot_id] = data.status
-            return updatedStatuses
-          })
-
-        } catch (parseError) {
-          console.error('Could not parse WebSocket message:', parseError)
-        }
-      }
-
-      // If the connection closes, try to reconnect after 5 seconds
-      ws.onclose = function () {
-        console.log('WebSocket disconnected. Will reconnect in 5 seconds...')
-        setTimeout(function () {
-          connectToStation(stationId)
-        }, 5000)
-      }
-
-      // Save the WebSocket so we can close it later
-      setWebSocket(ws)
-
-    } catch (error) {
-      console.error('Could not connect to WebSocket:', error)
-    }
-  }
-
-  // Disconnect from the current WebSocket
-  function disconnectFromStation() {
-    if (webSocket) {
-      webSocket.close()
-      setWebSocket(null)
-    }
-  }
-
-  // Clean up on unmount: close the WebSocket when this component goes away
   useEffect(function () {
-    return function () {
-      if (webSocket) {
-        webSocket.close()
+    mountRef.current = true
+    var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    var host = window.location.host
+    var url = protocol + '//' + host + '/ws/stations/'
+
+    function connect() {
+      if (!mountRef.current) return
+      try {
+        ws.current = new WebSocket(url)
+
+        ws.current.onopen = function () {
+          if (!mountRef.current) { ws.current.close(); return }
+          setConnected(true)
+          var ids = stationIdsRef.current
+          if (ids.length > 0) {
+            ws.current.send(JSON.stringify({ type: 'subscribe', station_ids: ids }))
+          }
+        }
+
+        ws.current.onmessage = function (evt) {
+          try {
+            var msg = JSON.parse(evt.data)
+            if (msg.type === 'station_update' && msg.station) {
+              setStationUpdates(function (prev) {
+                var next = Object.assign({}, prev)
+                next[msg.station.id] = msg.station
+                return next
+              })
+            } else if (msg.type === 'batch_update' && msg.stations) {
+              var batchUpdate = {}
+              msg.stations.forEach(function (st) {
+                if (st && st.id) batchUpdate[st.id] = st
+              })
+              setStationUpdates(function (prev) {
+                return Object.assign({}, prev, batchUpdate)
+              })
+            } else if (msg.slot_id) {
+              setStatuses(function (prev) {
+                var next = Object.assign({}, prev)
+                next[msg.slot_id] = msg.status
+                return next
+              })
+            }
+            Object.keys(listenersRef.current).forEach(function (key) {
+              listenersRef.current[key](msg)
+            })
+          } catch (e) {
+            console.error('WS parse error', e)
+          }
+        }
+
+        ws.current.onclose = function () {
+          if (!mountRef.current) return
+          setConnected(false)
+          reconnectTimerRef.current = setTimeout(connect, 3000)
+        }
+
+        ws.current.onerror = function () {
+          if (ws.current) ws.current.close()
+        }
+      } catch (e) {
+        console.error('WS connection error', e)
+        reconnectTimerRef.current = setTimeout(connect, 5000)
       }
     }
-  }, [webSocket])
+
+    connect()
+
+    return function () {
+      mountRef.current = false
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      if (ws.current) ws.current.close()
+    }
+  }, [])
+
+  var addListener = useCallback(function (key, fn) {
+    listenersRef.current[key] = fn
+    return function () { delete listenersRef.current[key] }
+  }, [])
+
+  var sendMessage = useCallback(function (msg) {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify(msg))
+    }
+  }, [])
 
   return (
     <WebSocketContext.Provider value={{
+      connected: connected,
       statuses: statuses,
+      stationUpdates: stationUpdates,
       connect: connectToStation,
       disconnect: disconnectFromStation,
+      subscribeToStations: subscribeToStations,
+      addListener: addListener,
+      sendMessage: sendMessage,
     }}>
-      {children}
+      {props.children}
     </WebSocketContext.Provider>
   )
 }
@@ -126,3 +144,5 @@ export function useWebSocket() {
   }
   return context
 }
+
+export default WebSocketContext

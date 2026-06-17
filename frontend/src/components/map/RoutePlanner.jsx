@@ -1,9 +1,10 @@
 import { useState, useRef } from 'react'
-import { FiNavigation, FiMapPin, FiZap, FiClock, FiX, FiChevronLeft, FiCheck } from 'react-icons/fi'
+import { FiNavigation, FiMapPin, FiZap, FiClock, FiX, FiChevronLeft, FiCheck, FiSearch } from 'react-icons/fi'
 import VehicleSelector from './VehicleSelector'
 import { getEstimatedRange } from '../../data/vehicleProfiles'
 import { searchLocations } from '../../api/geocode'
-import { generateRouteOptions, findChargingStops } from '../../utils/route'
+import { getStations, getStationsBatch } from '../../api/stations'
+import { generateRouteOptions, findChargingStops, fetchStationsAlongRoute } from '../../utils/route'
 
 var OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
 
@@ -111,7 +112,16 @@ export default function RoutePlanner(props) {
       var distanceM = route.distance
       var durationS = route.duration
 
-      var routeOptions = generateRouteOptions(coordinates, distanceM, vehicle, batteryPercent, stations)
+      var routeStations = []
+      try {
+        routeStations = await fetchStationsAlongRoute(coordinates, distanceM / 1000, 20, getStations)
+      } catch (e) {
+        console.warn('Route station fetch failed, using existing', e)
+        routeStations = stations || []
+      }
+
+      var allStations = routeStations.length > 0 ? routeStations : stations
+      var routeOptions = generateRouteOptions(coordinates, distanceM, vehicle, batteryPercent, allStations)
       var selectedOption = routeOptions[0] || { stops: [] }
 
       var plan = {
@@ -119,6 +129,7 @@ export default function RoutePlanner(props) {
         distance: distanceM,
         duration: durationS,
         stops: selectedOption.stops,
+        stations: allStations,
         routeOptions: routeOptions,
         selectedOptionId: selectedOption.id,
         origin: originCoords,
@@ -147,6 +158,7 @@ export default function RoutePlanner(props) {
       distance: routePlan.distance,
       duration: routePlan.duration,
       stops: option.stops,
+      stations: routePlan.stations || [],
       routeOptions: routeOptions,
       selectedOptionId: optionId,
       origin: routePlan.origin,
@@ -319,6 +331,15 @@ export default function RoutePlanner(props) {
                   {routePlan.stops.length}
                 </span>
               </div>
+              {routePlan.stations && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-400">Stations on route</span>
+                  <span className="flex items-center gap-1 text-blue-400 font-medium">
+                    <FiSearch className="w-3 h-3" />
+                    {routePlan.stations.length}
+                  </span>
+                </div>
+              )}
               {(function () {
                 var totalChargeSec = routePlan.stops.reduce(function (s, stop) { return s + (stop.chargeTime || 0) }, 0)
                 if (totalChargeSec <= 0) return null

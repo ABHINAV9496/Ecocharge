@@ -107,7 +107,7 @@ export default function TripPlanner() {
       var distanceM = osrmRoute.distance
       var durationS = osrmRoute.duration
 
-      var stationsRes = await getStations({ include_ocm: 'true' })
+      var stationsRes = await getStations({})
       var allStations = stationsRes.data || []
 
       var stops = findChargingStops(coordinates, distanceM, vehicle, batteryPercent, allStations)
@@ -135,7 +135,7 @@ export default function TripPlanner() {
 
   function recalcStops(batteryValue) {
     if (!route || !route.route) return
-    var stationsResPromise = getStations({ include_ocm: 'true' })
+    var stationsResPromise = getStations({})
     stationsResPromise.then(function (res) {
       var allStations = res.data || []
       var newStops = findChargingStops(route.route, route.distance, vehicle, batteryValue, allStations)

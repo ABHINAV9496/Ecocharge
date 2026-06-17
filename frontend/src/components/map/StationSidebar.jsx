@@ -79,19 +79,9 @@ export default function StationSidebar(props) {
   }
 
   // ---- LOAD DATA ON MOUNT ----
-  // Runs once when the component first appears or the station changes
-  // For OCM stations, slots are already embedded — no need to fetch
   useEffect(function () {
-    if (station.isOCM) {
-      // OCM stations already have slots data from the mapper
-      setSlots(station.slots || [])
-      setLoading(false)
-    } else {
-      // Local stations need to fetch slots from the backend
-      loadSlots()
-    }
-
-    if (user && !station.isOCM) {
+    loadSlots()
+    if (user) {
       loadBalance()
     }
   }, [station.id, user])
@@ -200,11 +190,7 @@ export default function StationSidebar(props) {
                 {availableCount}/{totalCount} Available
               </span>
             </div>
-            {station.isOCM && (
-              <span className="px-2 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded-lg" title={station.last_updated ? 'OCM data refreshed: ' + new Date(station.last_updated).toLocaleDateString() : 'Open Charge Map data'}>
-                OCM
-              </span>
-            )}
+
           </div>
         </div>
       </div>
@@ -325,11 +311,7 @@ export default function StationSidebar(props) {
                                     <span className={'px-2 py-0.5 text-xs font-medium rounded-full ' + getSlotTypeColor(slot.slot_type)}>
                                       {SLOT_TYPE_LABELS[slot.slot_type] || slot.slot_type}
                                     </span>
-                                    {slot.isOCM && slot.label && (
-                                      <span className="text-xs text-gray-400 dark:text-gray-500">
-                                        {slot.label}
-                                      </span>
-                                    )}
+
                                   </div>
                                   <span className={'px-2 py-0.5 text-xs font-medium rounded-full ' + statusStyle}>
                                     {slot.status === 'AVAILABLE' ? 'Available' :
@@ -346,14 +328,6 @@ export default function StationSidebar(props) {
                                       {'\u20B9'}{slot.rate_per_kwh}/kWh
                                     </span>
 
-                                    {/* Power rating (for OCM slots) */}
-                                    {slot.power_kw && (
-                                      <span className="flex items-center gap-1">
-                                        <FiBatteryCharging className="w-3 h-3" />
-                                        {slot.power_kw} kW
-                                      </span>
-                                    )}
-
                                     {/* Off-peak rate (if available) */}
                                     {slot.off_peak_rate && (
                                       <span className="flex items-center gap-1">
@@ -363,8 +337,8 @@ export default function StationSidebar(props) {
                                     )}
                                   </div>
 
-                                  {/* Book button — only for DRIVER users on available slots (local stations only) */}
-                                  {slot.status === 'AVAILABLE' && user && user.role === 'DRIVER' && !station.isOCM && (
+                                  {/* Book button — only for DRIVER users on available slots */}
+                                  {slot.status === 'AVAILABLE' && user && user.role === 'DRIVER' && (
                                     <button
                                       onClick={function () { handleBook(slot) }}
                                       disabled={booking === slot.id}
@@ -393,8 +367,8 @@ export default function StationSidebar(props) {
           }
         </div>
 
-        {/* ---- SECTION: Wallet Balance (local stations only) ---- */}
-        {user && !station.isOCM && (
+        {/* ---- SECTION: Wallet Balance ---- */}
+        {user && (
           <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
             <div className="flex items-center justify-between">
               <div>
@@ -410,8 +384,8 @@ export default function StationSidebar(props) {
           </div>
         )}
 
-        {/* Login prompt for guests (local stations only) */}
-        {!user && !station.isOCM && (
+        {/* Login prompt for guests */}
+        {!user && (
           <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
             <p className="text-xs text-center text-gray-400 dark:text-gray-500">
               <a href="/login" className="text-emerald-500 hover:text-emerald-600 font-medium">
