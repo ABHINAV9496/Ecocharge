@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.gis.db import models as gis_models
+from django.conf import settings
 
 class ChargingStation(models.Model):
     class Status(models.TextChoices):
@@ -41,5 +42,36 @@ class ChargingSlot(models.Model):
 
     def __str__(self):
         return f"{self.station.name} - {self.slot_type} ({self.status})"
+
+
+class UserFavoriteStation(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='favorite_stations'
+    )
+    station = models.ForeignKey(ChargingStation, on_delete=models.CASCADE, related_name='favorited_by')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'station')
+
+    def __str__(self):
+        return f"{self.user.username} → {self.station.name}"
+
+
+class StationReview(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='reviews'
+    )
+    station = models.ForeignKey(ChargingStation, on_delete=models.CASCADE, related_name='reviews')
+    rating = models.IntegerField(choices=[(1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5')])
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'station')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.station.name} ({self.rating}/5)"
 
 

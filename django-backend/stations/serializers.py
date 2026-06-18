@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework_gis.serializers import GeoFeatureModelSerializer
-from .models import ChargingStation, ChargingSlot
+from .models import ChargingStation, ChargingSlot, UserFavoriteStation, StationReview
 
 
 class ChargingSlotSerializer(serializers.ModelSerializer):
@@ -58,3 +58,30 @@ class CreateStationSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
+
+
+class FavoriteStationSerializer(serializers.ModelSerializer):
+    station_name = serializers.CharField(source='station.name', read_only=True)
+    station_address = serializers.CharField(source='station.address', read_only=True)
+    station_latitude = serializers.SerializerMethodField()
+    station_longitude = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserFavoriteStation
+        fields = ['id', 'station', 'station_name', 'station_address', 'station_latitude', 'station_longitude', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def get_station_latitude(self, obj):
+        return obj.station.location.y if obj.station.location else None
+
+    def get_station_longitude(self, obj):
+        return obj.station.location.x if obj.station.location else None
+
+
+class StationReviewSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+
+    class Meta:
+        model = StationReview
+        fields = ['id', 'user', 'username', 'rating', 'comment', 'created_at']
+        read_only_fields = ['id', 'user', 'created_at']

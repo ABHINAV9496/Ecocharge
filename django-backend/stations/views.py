@@ -6,11 +6,13 @@ from django.contrib.gis.geos import Point, Polygon
 from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.measure import D
 from drf_spectacular.utils import extend_schema
-from .models import ChargingStation, ChargingSlot
+from .models import ChargingStation, ChargingSlot, UserFavoriteStation, StationReview
 from .serializers import (
     ChargingStationSerializer,
     CreateStationSerializer,
-    ChargingSlotSerializer
+    ChargingSlotSerializer,
+    FavoriteStationSerializer,
+    StationReviewSerializer,
 )
 
 
@@ -289,4 +291,65 @@ class StationByRouteView(APIView):
         stations = ChargingStation.objects.filter(location__within=corridor)
         serializer = ChargingStationSerializer(stations, many=True)
         return Response({'stations': serializer.data, 'count': len(serializer.data)})
+
+
+@extend_schema(tags=['Stations'])
+class FavoriteStationToggleView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        station_id = request.data.get('station_id')
+        if not station_id:
+            return Response({'error': 'station_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            station = ChargingStation.objects.get(pk=station_id)
+        except ChargingStation.DoesNotExist:
+            return Response({'error': 'Station not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        fav, created = UserFavoriteStation.objects.get_or_create(
+            user=request.user,
+            station=station,
+        )
+        if not created:
+            fav.delete()
+            return Response({'favorited': False, 'message': 'Removed from favorites'})
+
+        return Response({'favorited': True, 'message': 'Added to favorites'}, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=['Stations'])
+class FavoriteStationListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        favorites = UserFavoriteStation.objects.filter(user=request.user).select_related('station')
+        serializer = FavoriteStationSerializer(favorites, many=True)
+        return Response(serializer.data)
+
+
+@extend_schema(tags=['Stations'])
+class StationReviewListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, station_pk):
+        try:
+            station = ChargingStation.objects.get(pk=station_pk)
+        except ChargingStation.DoesNotExist:
+            return Response({'error': 'Station not found'}, status=status.HTTP_404_NOT_FOUND)
+        reviews = StationReview.objects.filter(station=station).select_related('user')
+        serializer = StationReviewSerializer(reviews, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, station_pk):
+        try:
+            station = ChargingStation.objects.get(pk=station_pk)
+        except ChargingStation.DoesNotExist:
+            return Response({'error': 'Station not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = StationReviewSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user, station=station)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
