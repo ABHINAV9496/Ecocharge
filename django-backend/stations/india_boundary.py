@@ -212,3 +212,47 @@ def is_within_india(lat, lng):
         if _haversine_km(lat, lng, clat, clng) <= 50:
             return True
     return False
+
+
+_BORDER_STATES = {
+    'Arunachal Pradesh', 'Mizoram', 'Tripura', 'Nagaland',
+    'Manipur', 'Meghalaya', 'Assam', 'Sikkim', 'Ladakh',
+    'Jammu and Kashmir', 'Jammu & Kashmir',
+}
+
+
+def is_on_indian_landmass(lat, lng):
+    """
+    Strict landmass check: point must be inside the India polygon,
+    inside island territories, OR within 50 km of a border-state city.
+    This excludes ocean points near coastal cities that the 50 km
+    buffer in is_within_india() would incorrectly allow.
+    """
+    n = len(INDIA_BOUNDARY)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        yi, xi = INDIA_BOUNDARY[i]
+        yj, xj = INDIA_BOUNDARY[j]
+        if ((yi > lat) != (yj > lat)) and (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    if inside:
+        return True
+    for poly in [ANDAMAN_BOUNDARY, LAKSHADWEEP_BOUNDARY, DIU_BOUNDARY]:
+        n = len(poly)
+        inside = False
+        j = n - 1
+        for i in range(n):
+            yi, xi = poly[i]
+            yj, xj = poly[j]
+            if ((yi > lat) != (yj > lat)) and (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi):
+                inside = not inside
+            j = i
+        if inside:
+            return True
+    from stations.indian_cities import CITIES as _cities
+    for (clat, clng), (_, _, _, state, _) in zip(_build_city_cache(), _cities):
+        if state in _BORDER_STATES and _haversine_km(lat, lng, clat, clng) <= 50:
+            return True
+    return False

@@ -129,7 +129,7 @@ class EnergyAwareRoutePlanner:
     def _soc_from_kwh(self, kwh):
         if self._usable_kwh <= 0:
             return 0.0
-        return (kwh / self._usable_kwh) * 100.0
+        return max(0.0, min(100.0, (kwh / self._usable_kwh) * 100.0))
 
     def _kwh_from_soc(self, soc):
         return self._usable_kwh * (soc / 100.0)
@@ -213,12 +213,16 @@ class EnergyAwareRoutePlanner:
         total_charge_s = 0.0
         total_cost = 0.0
         _search_failed = False
+        _stuck = False
 
         while True:
             km_left = total_km - cum_km[last_stop_idx]
             range_left = (remaining_kwh / self.consumption_wh_per_km) * 1000 if self.consumption_wh_per_km > 0 else 0
 
-            if range_left >= km_left + 20:
+            if range_left >= km_left + 20 and not _stuck:
+                break
+
+            if _stuck:
                 break
 
             look_km = max(5, range_left - 20)
@@ -238,10 +242,8 @@ class EnergyAwareRoutePlanner:
             candidates = self._find_stations(search_coords, stations)
             if not candidates:
                 _search_failed = True
-                remaining_kwh += self._usable_kwh * 0.1
-                if remaining_kwh > self._usable_kwh:
-                    break
-                continue
+                _stuck = True
+                break
 
             top = candidates[:MAX_ALTERNATIVES]
             best = top[0]
@@ -270,10 +272,8 @@ class EnergyAwareRoutePlanner:
                         arrival_soc = fs
                         break
                 else:
-                    remaining_kwh += self._usable_kwh * 0.05
-                    if remaining_kwh > self._usable_kwh:
-                        break
-                    continue
+                    _stuck = True
+                    break
 
             leg_km = stop_cum - last_stop_cum
             if leg_km > 0:
@@ -350,7 +350,7 @@ class EnergyAwareRoutePlanner:
         final_km = total_km - last_stop_cum
         if final_km > 0:
             final_s = (final_km / AVG_SPEED_KMPH) * 3600
-            final_kwh = remaining_kwh - self._segment_energy_kwh(final_km)
+            final_kwh = max(0, remaining_kwh - self._segment_energy_kwh(final_km))
             final_soc = self._soc_from_kwh(final_kwh)
             legs.append(TripLeg(len(legs), last_leg_start, dest_name,
                                 round(final_km, 1), round(final_s),
@@ -359,7 +359,8 @@ class EnergyAwareRoutePlanner:
             final_soc = self._soc_from_kwh(remaining_kwh)
 
         total_drive = sum(l.drive_time_seconds for l in legs)
-        total_energy = sum(self._segment_energy_kwh(d) for d in seg_dists)
+        traversable_km = min(total_km, cum_km[last_stop_idx] + (remaining_kwh / self.consumption_wh_per_km * 1000 if self.consumption_wh_per_km > 0 else 0))
+        total_energy = sum(self._segment_energy_kwh(d) for d in seg_dists[:last_stop_idx]) + self._segment_energy_kwh(max(0, traversable_km - cum_km[last_stop_idx]))
 
         note = ''
         if _search_failed and not stops:
