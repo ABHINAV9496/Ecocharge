@@ -763,13 +763,15 @@ export default function MapView(props) {
 
       {/* Station sidebar */}
       {selectedStation && (
-        <StationSidebar
-          station={selectedStation}
-          onClose={function () { setSelectedStation(null) }}
-          onBookSuccess={handleBookingSuccess}
-          statuses={liveStatuses}
-          user={user}
-        />
+        <div className="absolute top-0 right-0 h-full z-50">
+          <StationSidebar
+            station={selectedStation}
+            onClose={function () { setSelectedStation(null) }}
+            onBookSuccess={handleBookingSuccess}
+            statuses={liveStatuses}
+            user={user}
+          />
+        </div>
       )}
 
       <style>{`

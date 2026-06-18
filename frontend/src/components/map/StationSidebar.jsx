@@ -210,7 +210,7 @@ export default function StationSidebar(props) {
 
   // ---- RENDER ----
   return (
-    <div className="w-full md:w-[420px] bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border-l border-gray-200 dark:border-gray-800 overflow-y-auto shadow-2xl flex flex-col">
+    <div className="w-[420px] max-w-full h-full bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border-l border-gray-200 dark:border-gray-800 overflow-y-auto shadow-2xl flex flex-col">
 
       {/* ---- HEADER ----
           Station name, address, and close button.

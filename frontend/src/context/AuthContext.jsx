@@ -56,8 +56,8 @@ export function AuthProvider(props) {
           localStorage.setItem('user', JSON.stringify(freshUser))
           setUser(freshUser)
         })
-        .catch(function () {
-          // If profile fetch fails (e.g. token expired), keep the cached user
+        .catch(function (err) {
+          console.error('Auth: profile fetch failed — token may be expired', err)
         })
     }
 

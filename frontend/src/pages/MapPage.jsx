@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import Navbar from '../components/layout/Navbar'
 import MapView from '../components/map/MapView'
 import RoutePlanner from '../components/map/RoutePlanner'
 import EcoBotWidget from '../components/chat/EcoBotWidget'
@@ -23,7 +24,9 @@ export default function MapPage() {
   }, [])
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-gray-950 flex">
+    <div className="h-screen w-screen overflow-hidden bg-gray-950 flex flex-col">
+      <Navbar />
+      <div className="flex-1 flex overflow-hidden">
       {showPlanner && (
         <div className="w-[360px] shrink-0 border-r border-gray-800">
           <RoutePlanner
@@ -53,6 +56,7 @@ export default function MapPage() {
           showPlanner={showPlanner}
         />
         <EcoBotWidget />
+      </div>
       </div>
     </div>
   )
