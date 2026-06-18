@@ -11,9 +11,16 @@ export async function searchLocations(query, limit) {
     return cached.data
   }
 
-  var data = await tryPhoton(query, limit)
+  var data = await tryNominatim(query, limit)
   if (!data || data.length === 0) {
-    data = await tryNominatim(query, limit)
+    data = await tryPhoton(query, limit)
+    if (data) {
+      data = data.filter(function (r) {
+        var lat = parseFloat(r.lat)
+        var lng = parseFloat(r.lon)
+        return lat >= 6 && lat <= 37 && lng >= 68 && lng <= 98
+      })
+    }
   }
 
   if (data && data.length > 0) {

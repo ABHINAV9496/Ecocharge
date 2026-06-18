@@ -29,6 +29,7 @@ class StationListView(APIView):
         max_lat = request.query_params.get('max_lat')
         min_lng = request.query_params.get('min_lng')
         max_lng = request.query_params.get('max_lng')
+        bounds = request.query_params.get('bounds')
 
         stations = ChargingStation.objects.all()
 
@@ -58,6 +59,14 @@ class StationListView(APIView):
                     float(max_lng), float(max_lat)
                 ))
             )
+
+        if bounds:
+            parts = [float(x) for x in bounds.split(',')]
+            if len(parts) == 4:
+                south, west, north, east = parts
+                stations = stations.filter(
+                    location__within=Polygon.from_bbox((west, south, east, north))
+                )
 
         serializer = ChargingStationSerializer(stations, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)

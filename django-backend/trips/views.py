@@ -1,6 +1,18 @@
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
+from django.contrib.gis.geos import Polygon
+from django.contrib.gis.db.models import Extent
 from .models import Trip
-from .serializers import TripSerializer
+from .serializers import (
+    TripSerializer,
+    TripPlanRequestSerializer,
+    TripPlanResponseSerializer,
+)
+from .services.route_planner import EnergyAwareRoutePlanner
+from vehicles.models import VehicleProfile
+from stations.models import ChargingStation
 from users.permissions import IsDriver
 
 
@@ -18,3 +30,69 @@ class TripDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return Trip.objects.filter(driver=self.request.user)
+
+
+class TripPlanView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsDriver]
+
+    def post(self, request):
+        serializer = TripPlanRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        data = serializer.validated_data
+        vehicle = get_object_or_404(
+            VehicleProfile,
+            id=data['vehicle_id'],
+        )
+
+        route_coords = data['route_coords']
+        lats = [c[0] for c in route_coords]
+        lngs = [c[1] for c in route_coords]
+        buffer_deg = 0.5
+        bounds_rect = Polygon.from_bbox((
+            max(-180, min(lngs) - buffer_deg),
+            max(-90, min(lats) - buffer_deg),
+            min(180, max(lngs) + buffer_deg),
+            min(90, max(lats) + buffer_deg),
+        ))
+
+        all_stations = ChargingStation.objects.filter(
+            status=ChargingStation.Status.ACTIVE,
+            location__within=bounds_rect,
+        ).prefetch_related('slots')
+
+        stations_data = []
+        for station in all_stations:
+            slots_data = []
+            for slot in station.slots.all():
+                slots_data.append({
+                    'id': slot.id,
+                    'slot_type': slot.slot_type,
+                    'status': slot.status,
+                    'rate_per_kwh': float(slot.rate_per_kwh),
+                })
+            stations_data.append({
+                'id': station.id,
+                'name': station.name,
+                'address': station.address,
+                'latitude': station.location.y,
+                'longitude': station.location.x,
+                'slots': slots_data,
+            })
+
+        planner = EnergyAwareRoutePlanner(
+            consumption_wh_per_km=vehicle.consumption_wh_per_km,
+            battery_kwh=vehicle.battery_kwh,
+            battery_start_percent=data['battery_start_percent'],
+        )
+
+        plan = planner.plan_route(
+            route_coords=data['route_coords'],
+            total_distance_m=data['total_distance_m'],
+            stations=stations_data,
+            origin_name=data.get('origin_name', 'Origin'),
+            dest_name=data.get('dest_name', 'Destination'),
+        )
+
+        response_serializer = TripPlanResponseSerializer(plan)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)

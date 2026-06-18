@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
-import { FiSearch, FiMapPin, FiBatteryCharging, FiNavigation, FiDollarSign, FiClock, FiSave } from 'react-icons/fi'
+import { FiSearch, FiMapPin, FiBatteryCharging, FiNavigation, FiDollarSign, FiClock, FiSave, FiZap } from 'react-icons/fi'
 import { MapContainer, TileLayer, Marker, Polyline, Popup } from 'react-leaflet'
 import L from 'leaflet'
 import { getStations } from '../../api/stations'
 import { createTrip } from '../../api/trips'
-import { formatCurrency } from '../../utils/formatters'
-import { useAuth } from '../../context/AuthContext'
+import { planRoute } from '../../api/routePlanner'
 import { getVehicleById, DEFAULT_VEHICLE_ID } from '../../data/vehicleProfiles'
-import { findChargingStops } from '../../utils/route'
+import { useAuth } from '../../context/AuthContext'
 import 'leaflet/dist/leaflet.css'
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -28,6 +27,13 @@ var stopIcon = L.divIcon({
 })
 
 var OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
+
+function formatDuration(seconds) {
+  if (!seconds || seconds <= 0) return '0m'
+  var h = Math.floor(seconds / 3600)
+  var m = Math.round((seconds % 3600) / 60)
+  return h > 0 ? h + 'h ' + m + 'm' : m + 'm'
+}
 
 export default function TripPlanner() {
   var { user } = useAuth()
@@ -95,6 +101,7 @@ export default function TripPlanner() {
 
   async function handlePlanRoute() {
     if (!originCoords || !destCoords) { setError('Please select valid origin and destination from suggestions.'); return }
+    if (!vehicle) { setError('No vehicle selected.'); return }
     setIsLoading(true); setError(''); setSaved(false); setRoute(null)
     try {
       var url = OSRM_BASE + '/' + originCoords.lng + ',' + originCoords.lat + ';' + destCoords.lng + ',' + destCoords.lat + '?geometries=geojson&overview=full&steps=true'
@@ -107,20 +114,28 @@ export default function TripPlanner() {
       var distanceM = osrmRoute.distance
       var durationS = osrmRoute.duration
 
-      var stationsRes = await getStations({})
-      var allStations = stationsRes.data || []
+      var planResult = await planRoute({
+        route_coords: coordinates,
+        total_distance_m: distanceM,
+        total_duration_s: durationS,
+        vehicle_id: vehicle.id,
+        battery_start_percent: batteryPercent,
+        origin_name: origin,
+        dest_name: destination,
+      })
 
-      var stops = findChargingStops(coordinates, distanceM, vehicle, batteryPercent, allStations)
+      var backendPlan = planResult.data
 
       setRoute({
         route: coordinates,
         distance: distanceM,
         duration: durationS,
-        stops: stops,
+        backendPlan: backendPlan,
         origin: originCoords,
         destination: destCoords,
         originName: origin,
         destName: destination,
+        stops: backendPlan.stops || [],
       })
     } catch (e) { console.error(e); setError('Route planning failed. Please try again.') }
     setIsLoading(false)
@@ -129,24 +144,53 @@ export default function TripPlanner() {
   function handleWhatIfChange(newValue) {
     setBatteryPercent(newValue)
     if (route) {
-      setTimeout(function () { recalcStops(newValue) }, 400)
+      setTimeout(function () { recalcPlan(newValue) }, 400)
     }
   }
 
-  function recalcStops(batteryValue) {
-    if (!route || !route.route) return
-    var stationsResPromise = getStations({})
-    stationsResPromise.then(function (res) {
-      var allStations = res.data || []
-      var newStops = findChargingStops(route.route, route.distance, vehicle, batteryValue, allStations)
-      setRoute(Object.assign({}, route, { stops: newStops }))
-    }).catch(function () {})
+  async function recalcPlan(batteryValue) {
+    if (!route || !route.route || !vehicle) return
+    try {
+      var planResult = await planRoute({
+        route_coords: route.route,
+        total_distance_m: route.distance,
+        total_duration_s: route.duration,
+        vehicle_id: vehicle.id,
+        battery_start_percent: batteryValue,
+        origin_name: route.originName,
+        dest_name: route.destName,
+      })
+      var backendPlan = planResult.data
+      setRoute(Object.assign({}, route, {
+        backendPlan: backendPlan,
+        stops: backendPlan.stops || [],
+      }))
+    } catch (e) { console.error('Replan error:', e) }
   }
 
   async function handleSaveTrip() {
     if (!route || !user) return
     setSaving(true)
     try {
+      var bp = route.backendPlan
+      var totalCost = bp ? bp.total_cost : 0
+      var endPercent = bp ? bp.final_soc_percent : batteryPercent
+      var stopData = bp ? bp.stops.map(function (s) {
+        return {
+          stop_index: s.stop_index,
+          station_id: s.station_id,
+          station_name: s.station_name,
+          lat: s.lat,
+          lng: s.lng,
+          arrival_soc_percent: s.arrival_soc_percent,
+          departure_soc_percent: s.departure_soc_percent,
+          charge_kwh: s.charge_kwh,
+          charge_time_seconds: s.charge_time_seconds,
+          cost: s.cost,
+          detour_km: s.detour_km,
+        }
+      }) : []
+
       await createTrip({
         origin: route.originName,
         destination: route.destName,
@@ -157,18 +201,20 @@ export default function TripPlanner() {
         distance_km: route.distance / 1000,
         duration_minutes: route.duration / 60,
         battery_start_percent: batteryPercent,
-        battery_end_percent: route.stops.length > 0 ? 20 : Math.round(100 - (route.distance / 1000) * vehicle.consumption_wh_per_km / (vehicle.battery_kwh * 10)),
-        total_cost: route.stops.reduce(function (sum, s) { return sum + (s.cost || 0) }, 0),
+        battery_end_percent: endPercent,
+        total_cost: totalCost,
         route_geometry: route.route,
-        stops: route.stops,
+        stops: stopData,
       })
       setSaved(true)
     } catch (e) { console.error('Save trip error:', e); setError('Failed to save trip.') }
     setSaving(false)
   }
 
-  var arrivalPercent = route ? Math.round(100 - ((route.distance / 1000) * vehicle.consumption_wh_per_km / (vehicle.battery_kwh * 10))) : 0
-  var batteryColor = arrivalPercent > 20 ? 'text-emerald-500' : 'text-red-500'
+  var bp = route ? route.backendPlan : null
+  var stopCount = bp ? bp.stops.length : 0
+  var arrivalPercent = bp ? bp.final_soc_percent : 0
+  var batteryColorClass = arrivalPercent > 20 ? 'text-emerald-500' : 'text-red-500'
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">
@@ -251,43 +297,48 @@ export default function TripPlanner() {
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-500 dark:text-gray-400">Est. driving time</span>
-                <span className="font-semibold text-gray-900 dark:text-white">{Math.round(route.duration / 60)} min</span>
+                <span className="font-semibold text-gray-900 dark:text-white">{formatDuration(route.duration)}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-500 dark:text-gray-400">Arrival Battery</span>
-                <span className={'font-semibold ' + batteryColor}>{arrivalPercent}%</span>
+                <span className={'font-semibold ' + batteryColorClass}>{arrivalPercent}%</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-500 dark:text-gray-400">Charging stops</span>
-                <span className="font-semibold text-amber-500">{route.stops.length}</span>
+                <span className="font-semibold text-amber-500">{stopCount}</span>
               </div>
+              {bp && bp.total_cost > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Est. cost</span>
+                  <span className="font-semibold text-emerald-500">₹{bp.total_cost}</span>
+                </div>
+              )}
+              {bp && bp.total_charge_time_seconds > 0 && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Total charge time</span>
+                  <span className="font-semibold text-amber-500">{formatDuration(bp.total_charge_time_seconds)}</span>
+                </div>
+              )}
             </div>
 
-            {route.stops.length > 0 && (
-              <div>
-                <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2.5">Charging Stops ({route.stops.length})</h4>
-                <div className="space-y-2">
-                  {route.stops.map(function (stop, i) {
-                    var stopCost = stop.chargeTime ? Math.round((stop.chargeTime / 3600) * 10) : 0
-                    return (
-                      <div key={i} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-sm font-semibold text-gray-900 dark:text-white">{stop.name || 'Stop ' + (i + 1)}</span>
-                          <span className="text-xs text-gray-500">{stop.distanceKm} km</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs text-gray-500">
-                          <span className="flex items-center gap-1"><FiBatteryCharging className="w-3 h-3" />{stop.arrivalSoC || '?'}%</span>
-                          {stop.chargeTime && <span className="flex items-center gap-1"><FiClock className="w-3 h-3" />{Math.round(stop.chargeTime / 60)} min</span>}
-                          <span className="flex items-center gap-1"><FiDollarSign className="w-3 h-3" />{formatCurrency(stopCost)}</span>
-                        </div>
-                      </div>
-                    )
-                  })}
+            {stopCount > 0 && bp.stops.map(function (stop, i) {
+              return (
+                <div key={i} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">{stop.station_name || 'Stop ' + (i + 1)}</span>
+                    <span className="text-xs text-gray-500">{stop.distance_from_start_km} km</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 text-xs text-gray-500">
+                    <span className="flex items-center gap-1"><FiBatteryCharging className="w-3 h-3" />Arrive {stop.arrival_soc_percent}%</span>
+                    <span className="flex items-center gap-1"><FiZap className="w-3 h-3" />{stop.charge_kwh} kWh</span>
+                    <span className="flex items-center gap-1"><FiClock className="w-3 h-3" />{formatDuration(stop.charge_time_seconds)}</span>
+                    <span className="flex items-center gap-1"><FiDollarSign className="w-3 h-3" />₹{stop.cost}</span>
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })}
 
-            {route.stops.length === 0 && (
+            {stopCount === 0 && (
               <div className="text-center py-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
                 <FiBatteryCharging className="w-5 h-5 text-emerald-400 mx-auto mb-1" />
                 <p className="text-xs text-emerald-600 dark:text-emerald-400">No charging stops needed!</p>
@@ -314,7 +365,14 @@ export default function TripPlanner() {
               <Marker position={route.route[route.route.length - 1]} icon={endIcon}><Popup>{route.destName}</Popup></Marker>
               {route.stops.map(function (stop, i) {
                 if (!stop.lat || !stop.lng) return null
-                return <Marker key={i} position={[stop.lat, stop.lng]} icon={stopIcon}><Popup><div className="text-sm"><strong className="text-gray-900">{stop.name || 'Stop ' + (i + 1)}</strong><p className="text-xs text-gray-500 mt-1">Battery on arrival: {stop.arrivalSoC || '?'}%</p></div></Popup></Marker>
+                return <Marker key={i} position={[stop.lat, stop.lng]} icon={stopIcon}>
+                  <Popup>
+                    <div className="text-sm">
+                      <strong className="text-gray-900">{stop.station_name || 'Stop ' + (i + 1)}</strong>
+                      <p className="text-xs text-gray-500 mt-1">Arrive: {stop.arrival_soc_percent}%, Charge: {stop.charge_kwh} kWh</p>
+                    </div>
+                  </Popup>
+                </Marker>
               })}
             </>
           )}
@@ -329,5 +387,3 @@ export default function TripPlanner() {
     </div>
   )
 }
-
-

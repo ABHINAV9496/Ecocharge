@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, LayersControl, Polyline } from 'react-leaflet'
 import L from 'leaflet'
-import { FiSearch, FiCrosshair, FiBatteryCharging, FiRefreshCw, FiSettings, FiNavigation, FiChevronRight } from 'react-icons/fi'
+import { FiSearch, FiCrosshair, FiBatteryCharging, FiRefreshCw, FiSettings, FiNavigation, FiChevronRight, FiArrowRight } from 'react-icons/fi'
 import { getStations } from '../../api/stations'
 import { searchLocations } from '../../api/geocode'
 import { useWebSocket } from '../../context/WebSocketContext'
@@ -11,34 +11,35 @@ import VehicleInfoPanel from './VehicleInfoPanel'
 import StationSidebar from './StationSidebar'
 import HeatmapLayer from './HeatmapLayer'
 import 'leaflet/dist/leaflet.css'
-import { computeRouteBounds } from '../../utils/route'
 
 delete L.Icon.Default.prototype._getIconUrl
 
 function createStationIcon(statusCode, isSelected) {
   var colors = {
-    ACTIVE: { fill: '#22c55e', stroke: '#16a34a' },
+    ACTIVE: { fill: '#ef4444', stroke: '#dc2626' },
     MAINTENANCE: { fill: '#f59e0b', stroke: '#d97706' },
-    INACTIVE: { fill: '#9ca3af', stroke: '#6b7280' },
+    INACTIVE: { fill: '#94a3b8', stroke: '#64748b' },
   }
 
   var c = colors[statusCode] || colors.ACTIVE
-  var r = isSelected ? 14 : 11
+  var s = isSelected ? 32 : 26
 
   var svg = [
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="', r * 2, '" height="', r * 2, '">',
-    isSelected ? '<circle cx="14" cy="14" r="18" fill="none" stroke="' + c.stroke + '" stroke-width="1.5" opacity="0.25"><animate attributeName="r" values="15;21;15" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite"/></circle>' : '',
-    '  <circle cx="14" cy="14" r="', r, '" fill="', c.fill, '" stroke="white" stroke-width="2.5" filter="url(#s)"/>',
-    '  <defs><filter id="s"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.3"/></filter></defs>',
-    '  <path d="M12 8l-4 7h3.5L10 20l6-8.5h-3.5L14 8z" fill="white"/>',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="', s, '" height="', s, '">',
+    isSelected ? '<circle cx="14" cy="14" r="18" fill="none" stroke="' + c.stroke + '" stroke-width="2" opacity="0.3"><animate attributeName="r" values="15;21;15" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.4;0;0.4" dur="2s" repeatCount="indefinite"/></circle>' : '',
+    '  <g filter="url(#s)">',
+    '    <circle cx="14" cy="14" r="12" fill="', c.fill, '" stroke="white" stroke-width="2"/>',
+    '    <path d="M13 5l-6 10h5l-1 8 7-11h-5l4-7z" fill="white"/>',
+    '  </g>',
+    '  <defs><filter id="s"><feDropShadow dx="0" dy="1.5" stdDeviation="2.5" flood-opacity="0.35"/></filter></defs>',
     '</svg>',
   ].join('')
 
   return L.divIcon({
     html: svg,
     className: '',
-    iconSize: [r * 2, r * 2],
-    iconAnchor: [r, r],
+    iconSize: [s, s],
+    iconAnchor: [s / 2, s / 2],
   })
 }
 
@@ -72,6 +73,15 @@ function createStopIcon(number) {
     iconSize: [size, Math.round(size * 1.5)],
     iconAnchor: [size / 2, Math.round(size * 1.5)],
   })
+}
+
+function ViewportWatcher({ onViewportChange }) {
+  useMapEvents({
+    moveend: function () {
+      onViewportChange()
+    },
+  })
+  return null
 }
 
 function LocationFinder(props) {
@@ -116,7 +126,6 @@ export default function MapView(props) {
   var [userLocation, setUserLocation] = useState([9.9312, 76.2673])
   var [searchQuery, setSearchQuery] = useState('')
   var [locationQuery, setLocationQuery] = useState('')
-  var [searchRadius, setSearchRadius] = useState(50)
   var [isLoading, setIsLoading] = useState(true)
   var [isError, setIsError] = useState(false)
   var [errorMessage, setErrorMessage] = useState('')
@@ -130,7 +139,6 @@ export default function MapView(props) {
   var [slotTypeFilter, setSlotTypeFilter] = useState([])
   var [showFilters, setShowFilters] = useState(false)
   var [showHeatmap, setShowHeatmap] = useState(false)
-  var [routeBounds, setRouteBounds] = useState(null)
   var searchTimer = useRef(null)
   var settingsRef = useRef(null)
   var userMenuRef = useRef(null)
@@ -139,23 +147,24 @@ export default function MapView(props) {
   var { user, logoutUser } = useAuth()
   var mapRef = useRef(null)
 
-  var loadStations = useCallback(async function (lat, lng, radius, bounds) {
+  var debounceTimer = useRef(null)
+  var initialLoadDone = useRef(null)
+
+  var loadStations = useCallback(async function (explicitBounds) {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current)
+      debounceTimer.current = null
+    }
     setIsLoading(true)
     setIsError(false)
     setErrorMessage('')
     try {
-      radius = radius || searchRadius
-      var params = { include_ocm: 'true' }
-      if (lat && lng) {
-        params.lat = lat
-        params.lng = lng
-        params.radius = radius
-      }
-      if (bounds) {
-        params.min_lat = bounds.minLat
-        params.max_lat = bounds.maxLat
-        params.min_lng = bounds.minLng
-        params.max_lng = bounds.maxLng
+      var params = {}
+      if (explicitBounds) {
+        params.bounds = explicitBounds.south + ',' + explicitBounds.west + ',' + explicitBounds.north + ',' + explicitBounds.east
+      } else if (mapRef.current) {
+        var b = mapRef.current.getBounds()
+        params.bounds = b.getSouth() + ',' + b.getWest() + ',' + b.getNorth() + ',' + b.getEast()
       }
       var response = await getStations(params)
       var data = response.data || []
@@ -176,31 +185,32 @@ export default function MapView(props) {
     } finally {
       setIsLoading(false)
     }
-  }, [searchRadius, onStationsLoad])
+  }, [onStationsLoad])
 
   useEffect(function () {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         function (position) {
-          var loc = [position.coords.latitude, position.coords.longitude]
-          setUserLocation(loc)
-          loadStations(loc[0], loc[1], 50)
+          setUserLocation([position.coords.latitude, position.coords.longitude])
         },
-        function () {
-          loadStations(userLocation[0], userLocation[1], 50)
-        },
+        function () { /* use default location */ },
         { enableHighAccuracy: true, timeout: 10000 }
       )
-    } else {
-      loadStations(userLocation[0], userLocation[1], 50)
     }
   }, [])
 
   useEffect(function () {
-    if (stations.length > 0 && !routeBounds) {
-      loadStations(userLocation[0], userLocation[1], searchRadius)
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true
+      var timer = setInterval(function () {
+        if (mapRef.current) {
+          clearInterval(timer)
+          loadStations()
+        }
+      }, 100)
+      return function () { clearInterval(timer) }
     }
-  }, [searchRadius])
+  }, [])
 
   useEffect(function () {
     function handleClick(e) {
@@ -221,8 +231,7 @@ export default function MapView(props) {
   function handleBookingSuccess(message) {
     setBookingMessage(message)
     setTimeout(function () { setBookingMessage(null) }, 3000)
-    setRouteBounds(null)
-    loadStations(userLocation[0], userLocation[1], searchRadius)
+    loadStations()
   }
 
   function findMyLocation() {
@@ -230,20 +239,18 @@ export default function MapView(props) {
       navigator.geolocation.getCurrentPosition(function (position) {
         var loc = [position.coords.latitude, position.coords.longitude]
         setUserLocation(loc)
-        setRouteBounds(null)
-        loadStations(loc[0], loc[1], searchRadius)
+        loadStations()
         if (mapRef.current) mapRef.current.flyTo(loc, 13)
       })
     }
   }
 
   function handleRetry() {
-    loadStations(userLocation[0], userLocation[1], searchRadius)
+    loadStations()
   }
 
   function focusOnRoute(coordinates) {
     if (!coordinates || coordinates.length === 0) {
-      setRouteBounds(null)
       return
     }
     var minLat = Infinity, maxLat = -Infinity
@@ -256,14 +263,17 @@ export default function MapView(props) {
       if (lng < minLng) minLng = lng
       if (lng > maxLng) maxLng = lng
     }
-    var centerLat = (minLat + maxLat) / 2
-    var centerLng = (minLng + maxLng) / 2
-    var latSpan = maxLat - minLat
-    var lngSpan = maxLng - minLng
-    var radiusKm = Math.max(latSpan, lngSpan / Math.cos(centerLat * Math.PI / 180)) * 111 / 2 + 50
-    setRouteBounds({ minLat: minLat - 0.5, maxLat: maxLat + 0.5, minLng: minLng - 0.5, maxLng: maxLng + 0.5 })
-    loadStations(centerLat, centerLng, Math.max(radiusKm, 100))
+    var bounds = {
+      south: minLat - 0.5,
+      north: maxLat + 0.5,
+      west: minLng - 0.5,
+      east: maxLng + 0.5,
+    }
+    loadStations(bounds)
     if (mapRef.current) {
+      var centerLat = (minLat + maxLat) / 2
+      var centerLng = (minLng + maxLng) / 2
+      var latSpan = maxLat - minLat
       mapRef.current.flyTo([centerLat, centerLng], Math.max(6, Math.round(12 - latSpan * 30)))
     }
   }
@@ -299,6 +309,13 @@ export default function MapView(props) {
     })
   }, [stations, statusFilter, searchQuery, amenityFilter, slotTypeFilter])
 
+  function handleViewportChange() {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    debounceTimer.current = setTimeout(function () {
+      loadStations()
+    }, 400)
+  }
+
   async function searchLocation() {
     if (!locationQuery.trim()) return
     var data = await searchLocations(locationQuery, 1)
@@ -307,7 +324,7 @@ export default function MapView(props) {
       var lng = parseFloat(data[0].lon)
       if (!isNaN(lat) && !isNaN(lng)) {
         setUserLocation([lat, lng])
-        loadStations(lat, lng, searchRadius)
+        loadStations()
         if (mapRef.current) mapRef.current.flyTo([lat, lng], 12)
       }
     }
@@ -332,7 +349,7 @@ export default function MapView(props) {
     var lat = parseFloat(s.lat)
     var lng = parseFloat(s.lon)
     setUserLocation([lat, lng])
-    loadStations(lat, lng, searchRadius)
+    loadStations()
     if (mapRef.current) mapRef.current.flyTo([lat, lng], 12)
   }
 
@@ -412,18 +429,6 @@ export default function MapView(props) {
         </div>
 
         <div className="flex items-center gap-1.5">
-          <select
-            value={searchRadius}
-            onChange={function (e) { setSearchRadius(e.target.value) }}
-            className="bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-xl px-2.5 py-2.5 text-xs text-gray-300 outline-none shadow-lg cursor-pointer"
-          >
-            <option value={100}>100 km</option>
-            <option value={50}>50 km</option>
-            <option value={25}>25 km</option>
-            <option value={10}>10 km</option>
-            <option value={5}>5 km</option>
-          </select>
-
           <button
             onClick={findMyLocation}
             className="bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-xl p-2.5 shadow-lg hover:bg-gray-800 transition-colors"
@@ -616,21 +621,6 @@ export default function MapView(props) {
         </div>
       )}
 
-      {/* OCM data indicator */}
-      {stations.length > 0 && (function () {
-        var ocmCount = stations.filter(function (s) { return s.isOCM }).length
-        if (ocmCount === 0) return null
-        var latest = stations
-          .filter(function (s) { return s.isOCM && s.last_updated })
-          .sort(function (a, b) { return new Date(b.last_updated) - new Date(a.last_updated) })
-        var dateStr = latest.length > 0 ? new Date(latest[0].last_updated).toLocaleDateString() : ''
-        return (
-          <div className="absolute bottom-20 left-4 z-[1000] bg-gray-900/70 backdrop-blur-md rounded-lg px-3 py-1.5 text-[11px] text-gray-400 border border-gray-700">
-            OCM: {ocmCount} stations{dateStr ? ' · ' + dateStr : ''}
-          </div>
-        )
-      })()}
-
       {/* Vehicle info panel — left side (only when no planner) */}
       {!showPlanner && (
         <VehicleInfoPanel
@@ -648,16 +638,11 @@ export default function MapView(props) {
         ref={mapRef}
       >
         <LayersControl position="bottomright">
-          <LayersControl.BaseLayer checked name="Light">
+          <LayersControl.BaseLayer checked name="Roadmap">
             <TileLayer
-              attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-            />
-          </LayersControl.BaseLayer>
-          <LayersControl.BaseLayer name="Dark">
-            <TileLayer
-              attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+              attribution=''
+              url="https://mt{s}.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}"
+              subdomains="0123"
             />
           </LayersControl.BaseLayer>
           <LayersControl.BaseLayer name="Satellite">
@@ -671,6 +656,8 @@ export default function MapView(props) {
         <LocationFinder onLocationFound={function (loc) { setUserLocation(loc) }} />
 
         <FitBoundsOnRoute routePlan={routePlan} />
+
+        <ViewportWatcher onViewportChange={handleViewportChange} />
 
         {/* Route polyline */}
         {routePlan && routePlan.route && routePlan.route.length > 1 && (
@@ -697,9 +684,16 @@ export default function MapView(props) {
             <Marker key={'stop-' + i} position={[stop.lat, stop.lng]} icon={createStopIcon(i + 1)}>
               <Popup>
                 <div className="min-w-[180px]">
-                  <h3 className="font-semibold text-sm mb-1">{stop.name || 'Charging Stop'}</h3>
+                  <h3 className="font-semibold text-sm mb-1">{stop.station_name || stop.name || 'Charging Stop'}</h3>
                   <p className="text-xs text-gray-500 mb-1">{stop.address || ''}</p>
-                  <div className="text-xs text-amber-600 font-medium">Charging stop #{i + 1}</div>
+                  {stop.arrival_soc_percent != null && (
+                    <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                      <span className="text-amber-400">Arrive {stop.arrival_soc_percent}%</span>
+                      <FiArrowRight className="w-2.5 h-2.5" />
+                      <span className="text-emerald-400">Depart {stop.departure_soc_percent}%</span>
+                    </div>
+                  )}
+                  <div className="text-xs text-amber-600 font-medium mt-1">Charging stop #{i + 1}</div>
                 </div>
               </Popup>
             </Marker>
