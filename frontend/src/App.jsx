@@ -1,7 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
+import { ToastProvider } from './context/ToastContext'
 import ProtectedRoute from './components/layout/ProtectedRoute'
-import Navbar from './components/layout/Navbar'
+import ErrorBoundary from './components/layout/ErrorBoundary'
 import Home from './pages/Home'
 import About from './pages/About'
 import Features from './pages/Features'
@@ -25,40 +26,42 @@ function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/about" element={<About />} />
-      <Route path="/features" element={<Features />} />
-      <Route path="/contact" element={<Contact />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={user ? <Navigate to="/map" replace /> : <Register />} />
-      <Route path="/map" element={<MapPage />} />
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute roles={['DRIVER', 'STATION_OWNER', 'SUPER_ADMIN']}>
-            <DashboardPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/trips"
-        element={
-          <ProtectedRoute roles={['DRIVER']}>
-            <TripsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          <ProtectedRoute roles={['STATION_OWNER', 'SUPER_ADMIN']}>
-            <AdminPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/map" replace />} />
-    </Routes>
+    <ToastProvider>
+      <Routes>
+        <Route path="/" element={<ErrorBoundary><Home /></ErrorBoundary>} />
+        <Route path="/about" element={<ErrorBoundary><About /></ErrorBoundary>} />
+        <Route path="/features" element={<ErrorBoundary><Features /></ErrorBoundary>} />
+        <Route path="/contact" element={<ErrorBoundary><Contact /></ErrorBoundary>} />
+        <Route path="/login" element={<ErrorBoundary><Login /></ErrorBoundary>} />
+        <Route path="/register" element={<ErrorBoundary>{user ? <Navigate to="/map" replace /> : <Register />}</ErrorBoundary>} />
+        <Route path="/map" element={<ErrorBoundary><MapPage /></ErrorBoundary>} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute roles={['DRIVER', 'STATION_OWNER', 'SUPER_ADMIN']}>
+              <ErrorBoundary><DashboardPage /></ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/trips"
+          element={
+            <ProtectedRoute roles={['DRIVER']}>
+              <ErrorBoundary><TripsPage /></ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute roles={['STATION_OWNER', 'SUPER_ADMIN']}>
+              <ErrorBoundary><AdminPage /></ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/map" replace />} />
+      </Routes>
+    </ToastProvider>
   )
 }
 
