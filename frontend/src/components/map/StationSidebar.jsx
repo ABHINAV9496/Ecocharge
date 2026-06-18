@@ -23,8 +23,8 @@
 */
 
 import { useState, useEffect } from 'react'
-import { FiX, FiClock, FiDollarSign, FiBatteryCharging } from 'react-icons/fi'
-import { getSlots } from '../../api/stations'
+import { FiX, FiClock, FiDollarSign, FiBatteryCharging, FiHeart, FiStar } from 'react-icons/fi'
+import { getSlots, toggleFavorite, getReviews, createReview } from '../../api/stations'
 import { createBooking } from '../../api/bookings'
 import { getBalance } from '../../api/wallet'
 import { formatCurrency, getSlotTypeColor, SLOT_TYPE_LABELS } from '../../utils/formatters'
@@ -50,6 +50,10 @@ export default function StationSidebar(props) {
   var [balance, setBalance] = useState(0)     // User's wallet balance
   var [error, setError] = useState('')        // Error message to show (empty = no error)
   var [balanceError, setBalanceError] = useState('')  // Error fetching balance
+  var [favorited, setFavorited] = useState(false)       // Is this station favorited?
+  var [reviews, setReviews] = useState([])               // Reviews for this station
+  var [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' })
+  var [submittingReview, setSubmittingReview] = useState(false)
 
   // ---- FETCH SLOTS ----
   // This gets the list of charging slots from the backend API
@@ -81,9 +85,54 @@ export default function StationSidebar(props) {
     }
   }
 
+  // ---- FETCH REVIEWS ----
+  async function loadReviews() {
+    try {
+      var response = await getReviews(station.id)
+      setReviews(response.data)
+    } catch (error) {
+      console.error('Failed to load reviews:', error)
+    }
+  }
+
+  // ---- HANDLE FAVORITE TOGGLE ----
+  async function handleToggleFavorite() {
+    if (!user) {
+      showToast('Login to save favorites', 'info')
+      return
+    }
+    try {
+      var response = await toggleFavorite(station.id)
+      setFavorited(response.data.favorited)
+      showToast(response.data.message, 'success')
+    } catch (error) {
+      showToast('Failed to update favorite', 'error')
+    }
+  }
+
+  // ---- HANDLE REVIEW SUBMIT ----
+  async function handleSubmitReview() {
+    if (!reviewForm.comment.trim()) {
+      showToast('Please write a comment', 'info')
+      return
+    }
+    setSubmittingReview(true)
+    try {
+      await createReview(station.id, reviewForm)
+      showToast('Review submitted!', 'success')
+      setReviewForm({ rating: 5, comment: '' })
+      loadReviews()
+    } catch (error) {
+      showToast('Failed to submit review', 'error')
+    } finally {
+      setSubmittingReview(false)
+    }
+  }
+
   // ---- LOAD DATA ON MOUNT ----
   useEffect(function () {
     loadSlots()
+    loadReviews()
     if (user) {
       loadBalance()
     }
@@ -179,13 +228,22 @@ export default function StationSidebar(props) {
                 {station.address}
               </p>
             </div>
-            <button
-              onClick={onClose}
-              className="ml-3 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors shrink-0"
-              aria-label="Close sidebar"
-            >
-              <FiX className="w-5 h-5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleToggleFavorite}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors shrink-0"
+                aria-label={favorited ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <FiHeart className={'w-5 h-5 transition-colors ' + (favorited ? 'fill-red-500 text-red-500' : 'text-gray-400 hover:text-red-400')} />
+              </button>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors shrink-0"
+                aria-label="Close sidebar"
+              >
+                <FiX className="w-5 h-5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" />
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-3 mt-3">
@@ -391,6 +449,77 @@ export default function StationSidebar(props) {
             </p>
           </div>
         )}
+
+        {/* ---- SECTION: Reviews ---- */}
+        <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
+            Reviews
+          </h3>
+
+          {/* Review list */}
+          {reviews.length === 0 ? (
+            <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-3">No reviews yet</p>
+          ) : (
+            <div className="space-y-3 max-h-[240px] overflow-y-auto mb-4">
+              {reviews.map(function (review) {
+                return (
+                  <div key={review.id} className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{review.username}</span>
+                      <span className="flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map(function (star) {
+                          return (
+                            <FiStar
+                              key={star}
+                              className={'w-3 h-3 ' + (star <= review.rating ? 'fill-amber-400 text-amber-400' : 'text-gray-300 dark:text-gray-600')}
+                            />
+                          )
+                        })}
+                      </span>
+                    </div>
+                    {review.comment && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{review.comment}</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Review form — only for logged-in users */}
+          {user && (
+            <div className="space-y-3">
+              {/* Star rating picker */}
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map(function (star) {
+                  return (
+                    <button
+                      key={star}
+                      onClick={function () { setReviewForm(Object.assign({}, reviewForm, { rating: star })) }}
+                      className="p-0.5"
+                    >
+                      <FiStar className={'w-5 h-5 transition-colors ' + (star <= reviewForm.rating ? 'fill-amber-400 text-amber-400' : 'text-gray-300 dark:text-gray-600 hover:text-amber-300')} />
+                    </button>
+                  )
+                })}
+              </div>
+              <textarea
+                value={reviewForm.comment}
+                onChange={function (e) { setReviewForm(Object.assign({}, reviewForm, { comment: e.target.value })) }}
+                placeholder="Share your experience..."
+                rows={2}
+                className="w-full px-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none transition-all"
+              />
+              <button
+                onClick={handleSubmitReview}
+                disabled={submittingReview}
+                className={'w-full py-2 text-xs font-medium rounded-xl transition-all ' + (submittingReview ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:from-emerald-600 hover:to-emerald-700')}
+              >
+                {submittingReview ? 'Submitting...' : 'Submit Review'}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

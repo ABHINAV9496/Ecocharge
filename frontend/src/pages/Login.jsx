@@ -160,7 +160,12 @@ export default function Login() {
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Password</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
+              <Link to="/forgot-password" className="text-xs font-medium text-emerald-500 hover:text-emerald-600 transition-colors">
+                Forgot?
+              </Link>
+            </div>
             <div className="relative">
               <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
