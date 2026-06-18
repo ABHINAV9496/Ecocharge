@@ -3,7 +3,6 @@ import Navbar from '../components/layout/Navbar'
 import Sidebar from '../components/layout/Sidebar'
 import TripPlanner from '../components/trip/TripPlanner'
 import TripHistory from '../components/trip/TripHistory'
-import EcoBotWidget from '../components/chat/EcoBotWidget'
 
 export default function TripsPage() {
   const { user } = useAuth()
@@ -46,7 +45,6 @@ export default function TripsPage() {
           </div>
         </div>
       </div>
-      <EcoBotWidget />
     </div>
   )
 }

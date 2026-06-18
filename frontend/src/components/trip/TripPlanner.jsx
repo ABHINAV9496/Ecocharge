@@ -1,30 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { FiSearch, FiMapPin, FiBatteryCharging, FiNavigation, FiDollarSign, FiClock, FiSave, FiZap } from 'react-icons/fi'
-import { MapContainer, TileLayer, Marker, Polyline, Popup } from 'react-leaflet'
-import L from 'leaflet'
-import { getStations } from '../../api/stations'
 import { createTrip } from '../../api/trips'
 import { planRoute } from '../../api/routePlanner'
 import { getVehicleById, DEFAULT_VEHICLE_ID } from '../../data/vehicleProfiles'
 import { useAuth } from '../../context/AuthContext'
-import 'leaflet/dist/leaflet.css'
-
-delete L.Icon.Default.prototype._getIconUrl
-
-var startIcon = L.divIcon({
-  html: '<div style="width:24px;height:24px;background:#22c55e;border:3px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>',
-  className: '', iconSize: [24, 24], iconAnchor: [12, 12],
-})
-
-var endIcon = L.divIcon({
-  html: '<div style="width:24px;height:24px;background:#ef4444;border:3px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>',
-  className: '', iconSize: [24, 24], iconAnchor: [12, 12],
-})
-
-var stopIcon = L.divIcon({
-  html: '<div style="width:20px;height:20px;background:#f59e0b;border:3px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>',
-  className: '', iconSize: [20, 20], iconAnchor: [10, 10],
-})
 
 var OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
 
@@ -53,6 +32,7 @@ export default function TripPlanner() {
   var [showDestSugg, setShowDestSugg] = useState(false)
   var originTimer = useRef(null)
   var destTimer = useRef(null)
+  var whatIfTimer = useRef(null)
   var [vehicle, setVehicle] = useState(null)
 
   useEffect(function () {
@@ -144,7 +124,8 @@ export default function TripPlanner() {
   function handleWhatIfChange(newValue) {
     setBatteryPercent(newValue)
     if (route) {
-      setTimeout(function () { recalcPlan(newValue) }, 400)
+      if (whatIfTimer.current) clearTimeout(whatIfTimer.current)
+      whatIfTimer.current = setTimeout(function () { recalcPlan(newValue) }, 400)
     }
   }
 
@@ -171,6 +152,13 @@ export default function TripPlanner() {
   async function handleSaveTrip() {
     if (!route || !user) return
     setSaving(true)
+
+    if (whatIfTimer.current) {
+      clearTimeout(whatIfTimer.current)
+      whatIfTimer.current = null
+      await recalcPlan(batteryPercent)
+    }
+
     try {
       var bp = route.backendPlan
       var totalCost = bp ? bp.total_cost : 0
@@ -217,8 +205,7 @@ export default function TripPlanner() {
   var batteryColorClass = arrivalPercent > 20 ? 'text-emerald-500' : 'text-red-500'
 
   return (
-    <div className="flex h-[calc(100vh-4rem)]">
-      <div className="w-full md:w-96 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 overflow-y-auto p-5 space-y-5">
+    <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-5">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 bg-emerald-100 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center">
             <FiNavigation className="w-5 h-5 text-emerald-500" />
@@ -263,7 +250,7 @@ export default function TripPlanner() {
 
           <div>
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Starting Battery: <span className="font-bold text-emerald-500">{batteryPercent}%</span></label>
-            <input type="range" min="10" max="100" step="5" value={batteryPercent} onChange={function (e) { setBatteryPercent(Number(e.target.value)) }} className="w-full accent-emerald-500" />
+            <input type="range" min="10" max="100" step="5" value={batteryPercent} onChange={function (e) { handleWhatIfChange(Number(e.target.value)) }} className="w-full accent-emerald-500" />
             <div className="flex justify-between text-[10px] text-gray-400 mt-0.5"><span>10%</span><span>100%</span></div>
           </div>
 
@@ -274,18 +261,6 @@ export default function TripPlanner() {
 
           {error && <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-xl">{error}</div>}
         </div>
-
-        {route && (
-          <div className="pt-4 border-t border-gray-200 dark:border-gray-800 space-y-3">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <FiBatteryCharging className="w-4 h-4 text-emerald-500" />
-              What-If Simulator
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Adjust battery to see how it affects charging stops</p>
-            <input type="range" min="10" max="100" step="1" value={batteryPercent} onChange={function (e) { handleWhatIfChange(Number(e.target.value)) }} className="w-full accent-emerald-500" />
-            <div className="flex justify-between text-xs text-gray-400"><span>10%</span><span className="font-bold text-emerald-500">{batteryPercent}%</span><span>100%</span></div>
-          </div>
-        )}
 
         {route && (
           <div className="pt-4 border-t border-gray-200 dark:border-gray-800 space-y-3">
@@ -353,37 +328,6 @@ export default function TripPlanner() {
             )}
           </div>
         )}
-      </div>
-
-      <div className="flex-1">
-        <MapContainer center={[20, 78]} zoom={6} className="h-full w-full">
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
-          {route && route.route && route.route.length > 1 && (
-            <>
-              <Polyline positions={route.route} pathOptions={{ color: '#22c55e', weight: 4, opacity: 0.7 }} />
-              <Marker position={route.route[0]} icon={startIcon}><Popup>{route.originName}</Popup></Marker>
-              <Marker position={route.route[route.route.length - 1]} icon={endIcon}><Popup>{route.destName}</Popup></Marker>
-              {route.stops.map(function (stop, i) {
-                if (!stop.lat || !stop.lng) return null
-                return <Marker key={i} position={[stop.lat, stop.lng]} icon={stopIcon}>
-                  <Popup>
-                    <div className="text-sm">
-                      <strong className="text-gray-900">{stop.station_name || 'Stop ' + (i + 1)}</strong>
-                      <p className="text-xs text-gray-500 mt-1">Arrive: {stop.arrival_soc_percent}%, Charge: {stop.charge_kwh} kWh</p>
-                    </div>
-                  </Popup>
-                </Marker>
-              })}
-            </>
-          )}
-          {(!route || !route.route) && (
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] text-center pointer-events-none">
-              <FiNavigation className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
-              <p className="text-sm text-gray-400 dark:text-gray-500">Plan a trip to see the route on the map</p>
-            </div>
-          )}
-        </MapContainer>
-      </div>
     </div>
   )
 }

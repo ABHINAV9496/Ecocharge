@@ -7,8 +7,7 @@
   1. Station name, address, and amenities at the top
   2. A list of charging slots (the dock/port at that station)
   3. Each slot shows: type (AC/DC/Fast), rate, availability status
-  4. DRIVER users can book an available slot with one click
-  5. Wallet balance at the bottom if the user is logged in
+  4. DRIVER users can book an available slot with one click via Razorpay
 
   Slot colors:
   - Green border = Available (can be booked)
@@ -17,17 +16,16 @@
 
   How booking works:
   1. User clicks "Book" on an available slot
-  2. The component sends a POST to the backend with slot ID and time range
-  3. On success, the parent map refreshes to show updated slot status
-  4. The wallet balance is also refreshed
+  2. Creates a Razorpay order, opens checkout modal
+  3. On payment success, verifies the payment and confirms the booking
+  4. The parent map refreshes to show updated slot status
 */
 
 import { useState, useEffect } from 'react'
 import { FiX, FiClock, FiDollarSign, FiBatteryCharging, FiHeart, FiStar } from 'react-icons/fi'
 import { getSlots, toggleFavorite, getReviews, createReview } from '../../api/stations'
-import { createBooking } from '../../api/bookings'
-import { getBalance } from '../../api/wallet'
-import { formatCurrency, getSlotTypeColor, SLOT_TYPE_LABELS } from '../../utils/formatters'
+import { createRazorpayOrder, verifyRazorpayPayment } from '../../api/bookings'
+import { getSlotTypeColor, SLOT_TYPE_LABELS } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
 import { SkeletonList } from '../layout/Skeleton'
 
@@ -47,9 +45,7 @@ export default function StationSidebar(props) {
   var [slots, setSlots] = useState([])       // List of charging slots for this station
   var [loading, setLoading] = useState(true)  // Loading indicator
   var [booking, setBooking] = useState(null)  // ID of the slot currently being booked (null = not booking)
-  var [balance, setBalance] = useState(0)     // User's wallet balance
   var [error, setError] = useState('')        // Error message to show (empty = no error)
-  var [balanceError, setBalanceError] = useState('')  // Error fetching balance
   var [favorited, setFavorited] = useState(false)       // Is this station favorited?
   var [reviews, setReviews] = useState([])               // Reviews for this station
   var [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' })
@@ -69,20 +65,6 @@ export default function StationSidebar(props) {
     }
 
     setLoading(false)
-  }
-
-  // ---- FETCH WALLET BALANCE ----
-  // Only fetches if user is logged in
-  async function loadBalance() {
-    try {
-      var response = await getBalance()
-      setBalance(response.data.balance)
-      setBalanceError('')
-    } catch (error) {
-      console.error('Failed to load wallet balance:', error)
-      setBalanceError('Could not load balance')
-      setBalance(0)
-    }
   }
 
   // ---- FETCH REVIEWS ----
@@ -133,9 +115,6 @@ export default function StationSidebar(props) {
   useEffect(function () {
     loadSlots()
     loadReviews()
-    if (user) {
-      loadBalance()
-    }
   }, [station.id, user])
 
   // ---- APPLY LIVE STATUS UPDATES ----
@@ -147,18 +126,10 @@ export default function StationSidebar(props) {
     })
   })
 
-  // ---- HANDLE BOOKING ----
-  // Called when the user clicks the "Book" button on an available slot
+  // ---- HANDLE BOOKING (via Razorpay) ----
   async function handleBook(slot) {
-    // Guard clause: user must be logged in as a DRIVER
     if (!user || user.role !== 'DRIVER') {
       setError('Please login as a driver to book')
-      return
-    }
-
-    // CASE: Wallet balance check
-    if (balance <= 0) {
-      setError('Insufficient wallet balance. Please add funds.')
       return
     }
 
@@ -166,33 +137,70 @@ export default function StationSidebar(props) {
     setBooking(slot.id)
 
     try {
-      // Create a 1-hour booking starting now
       var now = new Date()
       var startTime = now.toISOString()
       var endTime = new Date(now.getTime() + 60 * 60 * 1000).toISOString()
 
-      var response = await createBooking({
+      // Step 1: Create Razorpay order
+      var orderResponse = await createRazorpayOrder({
         slot: slot.id,
         start_time: startTime,
         end_time: endTime,
       })
 
-      // CASE: Booking was successful — notify the parent and refresh
-      showToast('Booking confirmed at ' + station.name + '!', 'success')
-      onBookSuccess('Booking confirmed at ' + station.name + '!')
-      loadSlots()
-      loadBalance()
+      var order = orderResponse.data
+
+      // Step 2: Open Razorpay checkout
+      var options = {
+        key: order.key_id,
+        amount: order.amount,
+        currency: order.currency,
+        name: 'EcoCharge',
+        description: 'Booking at ' + station.name,
+        order_id: order.order_id,
+        handler: async function (paymentResponse) {
+          try {
+            await verifyRazorpayPayment({
+              razorpay_order_id: paymentResponse.razorpay_order_id,
+              razorpay_payment_id: paymentResponse.razorpay_payment_id,
+              razorpay_signature: paymentResponse.razorpay_signature,
+              slot_id: order.slot_id,
+              start_time: order.start_time,
+              end_time: order.end_time,
+            })
+            showToast('Booking confirmed at ' + station.name + '!', 'success')
+            onBookSuccess('Booking confirmed at ' + station.name + '!')
+            loadSlots()
+          } catch (verifyError) {
+            showToast('Payment succeeded but booking failed. Contact support.', 'error')
+            console.error('Verify error:', verifyError)
+          }
+        },
+        modal: {
+          ondismiss: function () {
+            showToast('Payment cancelled', 'info')
+          }
+        },
+        prefill: {
+          name: user.username || '',
+          email: user.email || '',
+        },
+        theme: { color: '#10b981' },
+      }
+
+      var rzp = new window.Razorpay(options)
+      rzp.on('payment.failed', function (response) {
+        showToast('Payment failed: ' + (response.error.description || 'Unknown error'), 'error')
+      })
+      rzp.open()
 
     } catch (error) {
       var errorMsg = 'Booking failed'
-
-      // Try to extract a meaningful error message from the API response
       if (error.response && error.response.data) {
         errorMsg = error.response.data.error || error.response.data.detail || errorMsg
       } else if (error.message) {
         errorMsg = error.message
       }
-
       showToast(errorMsg, 'error')
       setError(errorMsg)
       console.error('Booking error:', errorMsg)
@@ -420,23 +428,6 @@ export default function StationSidebar(props) {
             })()
           }
         </div>
-
-        {/* ---- SECTION: Wallet Balance ---- */}
-        {user && (
-          <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Wallet Balance</p>
-                {balanceError && (
-                  <p className="text-xs text-red-400 mt-0.5">{balanceError}</p>
-                )}
-              </div>
-              <span className="text-lg font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 bg-clip-text text-transparent">
-                {formatCurrency(balance)}
-              </span>
-            </div>
-          </div>
-        )}
 
         {/* Login prompt for guests */}
         {!user && (

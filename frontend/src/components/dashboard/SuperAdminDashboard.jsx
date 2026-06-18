@@ -29,6 +29,7 @@ export default function SuperAdminDashboard() {
   var [bookings, setBookings] = useState([])    // All bookings on the platform
   var [loading, setLoading] = useState(true)    // Loading indicator
   var [error, setError] = useState('')          // Error message
+  var [bookingError, setBookingError] = useState('')  // Error fetching bookings
 
 
   // ---- FETCH DATA ON MOUNT ----
@@ -36,16 +37,21 @@ export default function SuperAdminDashboard() {
     async function loadData() {
       try {
         var stationsResponse = await getStations()
-        var bookingsResponse = await getBookings()
-
         setStations(stationsResponse.data)
+      } catch (error) {
+        console.error('Failed to load stations:', error)
+        setError('Could not load stations.')
+      }
+
+      try {
+        var bookingsResponse = await getBookings()
         setBookings(bookingsResponse.data)
       } catch (error) {
-        console.error('Failed to load admin dashboard data:', error)
-        setError('Could not load platform data. Make sure the backend is running.')
-      } finally {
-        setLoading(false)
+        console.error('Failed to load bookings:', error)
+        setBookingError('Could not load bookings.')
       }
+
+      setLoading(false)
     }
 
     loadData()
@@ -78,21 +84,21 @@ export default function SuperAdminDashboard() {
     )
   }
 
-  // ---- ERROR STATE ----
-  if (error) {
-    return (
-      <div className="max-w-6xl mx-auto p-4 md:p-6">
-        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-2xl p-6 text-center">
-          <FiTrendingUp className="w-8 h-8 text-red-400 mx-auto mb-2" />
-          <p className="text-red-600 dark:text-red-400">{error}</p>
-        </div>
-      </div>
-    )
-  }
-
   // ---- MAIN RENDER ----
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
+
+      {/* Error banners */}
+      {error && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-xl">
+          {error}
+        </div>
+      )}
+      {bookingError && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 text-sm rounded-xl">
+          {bookingError}
+        </div>
+      )}
 
       {/* ---- PAGE HEADER ---- */}
       <div className="flex items-center gap-3">

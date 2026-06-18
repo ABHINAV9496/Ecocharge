@@ -21,13 +21,13 @@ export default function Login() {
   var navigate = useNavigate()
   var location = useLocation()
 
-  var redirectTo = '/map'
+  var redirectTo = '/dashboard'
   if (location.state && location.state.from) {
     redirectTo = location.state.from.pathname
   }
 
   function doRedirect(userRole) {
-    var target = userRole === 'SUPER_ADMIN' ? '/dashboard' : '/map'
+    var target = '/dashboard'
     if (location.state && location.state.from) {
       target = location.state.from.pathname
     }

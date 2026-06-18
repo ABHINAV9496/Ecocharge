@@ -4,7 +4,6 @@ import Sidebar from '../components/layout/Sidebar'
 import DriverDashboard from '../components/dashboard/DriverDashboard'
 import StationOwnerDashboard from '../components/dashboard/StationOwnerDashboard'
 import SuperAdminDashboard from '../components/dashboard/SuperAdminDashboard'
-import EcoBotWidget from '../components/chat/EcoBotWidget'
 
 export default function DashboardPage() {
   const { user } = useAuth()
@@ -26,7 +25,6 @@ export default function DashboardPage() {
           {renderDashboard()}
         </div>
       </div>
-      <EcoBotWidget />
     </div>
   )
 }

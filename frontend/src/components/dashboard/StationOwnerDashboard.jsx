@@ -45,6 +45,7 @@ export default function StationOwnerDashboard() {
     off_peak_rate: '',
   })
   var [error, setError] = useState('')             // Error message
+  var [bookingError, setBookingError] = useState('')   // Error fetching bookings
   var [formError, setFormError] = useState('')     // Form submission error
   var [slotError, setSlotError] = useState('')     // Slot creation error
   var [showMapPicker, setShowMapPicker] = useState(false)
@@ -55,15 +56,21 @@ export default function StationOwnerDashboard() {
     async function loadData() {
       try {
         var stationsResponse = await getStations()
-        var bookingsResponse = await getBookings()
         setStations(stationsResponse.data)
+      } catch (error) {
+        console.error('Failed to load stations:', error)
+        setError('Could not load your stations.')
+      }
+
+      try {
+        var bookingsResponse = await getBookings()
         setBookings(bookingsResponse.data)
       } catch (error) {
-        console.error('Failed to load owner data:', error)
-        setError('Could not load your stations. Make sure the backend is running.')
-      } finally {
-        setLoading(false)
+        console.error('Failed to load bookings:', error)
+        setBookingError('Could not load bookings.')
       }
+
+      setLoading(false)
     }
 
     loadData()
@@ -210,10 +217,15 @@ export default function StationOwnerDashboard() {
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
 
-      {/* Page-level error */}
+      {/* Page-level errors */}
       {error && (
         <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-xl">
           {error}
+        </div>
+      )}
+      {bookingError && (
+        <div className="p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 text-sm rounded-xl">
+          {bookingError}
         </div>
       )}
 
