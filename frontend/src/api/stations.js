@@ -63,3 +63,23 @@ export function getRouteStations(waypoints, radius) {
   return apiClient.post('/api/stations/by_route/', { waypoints: waypoints, radius: radius || 20 })
 }
 
+// Toggle a station as favorite
+export function toggleFavorite(stationId) {
+  return apiClient.post('/api/stations/favorites/toggle/', { station_id: stationId })
+}
+
+// Get user's favorite stations
+export function getFavorites() {
+  return apiClient.get('/api/stations/favorites/')
+}
+
+// Get reviews for a station
+export function getReviews(stationId) {
+  return apiClient.get('/api/stations/' + stationId + '/reviews/')
+}
+
+// Create a review for a station
+export function createReview(stationId, data) {
+  return apiClient.post('/api/stations/' + stationId + '/reviews/', data)
+}
+

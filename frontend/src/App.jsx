@@ -9,6 +9,8 @@ import Features from './pages/Features'
 import Contact from './pages/Contact'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
 import MapPage from './pages/MapPage'
 import DashboardPage from './pages/DashboardPage'
 import TripsPage from './pages/TripsPage'
@@ -34,6 +36,8 @@ function App() {
         <Route path="/contact" element={<ErrorBoundary><Contact /></ErrorBoundary>} />
         <Route path="/login" element={<ErrorBoundary><Login /></ErrorBoundary>} />
         <Route path="/register" element={<ErrorBoundary>{user ? <Navigate to="/map" replace /> : <Register />}</ErrorBoundary>} />
+        <Route path="/forgot-password" element={<ErrorBoundary><ForgotPassword /></ErrorBoundary>} />
+        <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
         <Route path="/map" element={<ErrorBoundary><MapPage /></ErrorBoundary>} />
         <Route
           path="/dashboard"

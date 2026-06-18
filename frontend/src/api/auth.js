@@ -43,3 +43,18 @@ export function refreshToken(refresh) {
 export function googleLogin(idToken) {
   return apiClient.post('/api/auth/google/', { id_token: idToken })
 }
+
+// Request a password reset email
+export function requestPasswordReset(email) {
+  return apiClient.post('/api/auth/password-reset/', { email: email })
+}
+
+// Confirm password reset with token and new password
+export function confirmPasswordReset(uid, token, password, password2) {
+  return apiClient.post('/api/auth/password-reset/confirm/', {
+    uid: uid,
+    token: token,
+    password: password,
+    password2: password2,
+  })
+}
