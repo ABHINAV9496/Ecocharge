@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, LayersControl, Polyline } from 'react-leaflet'
+import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import { FiSearch, FiCrosshair, FiBatteryCharging, FiRefreshCw, FiSettings, FiNavigation, FiChevronRight, FiArrowRight } from 'react-icons/fi'
 import { getStations } from '../../api/stations'
@@ -16,7 +17,7 @@ delete L.Icon.Default.prototype._getIconUrl
 
 function createStationIcon(statusCode, isSelected) {
   var colors = {
-    ACTIVE: { fill: '#ef4444', stroke: '#dc2626' },
+    ACTIVE: { fill: '#22c55e', stroke: '#16a34a' },
     MAINTENANCE: { fill: '#f59e0b', stroke: '#d97706' },
     INACTIVE: { fill: '#94a3b8', stroke: '#64748b' },
   }
@@ -700,14 +701,16 @@ export default function MapView(props) {
           )
         })}
 
-        {filteredStations.map(function (station) {
+        <MarkerClusterGroup chunkedLoading maxClusterRadius={60} spiderfyOnMaxZoom={true} showCoverageOnHover={false} disableClusteringAtZoom={14}>
+          {filteredStations.map(function (station) {
           var lat = station.latitude
           var lng = station.longitude
           if (!lat || !lng) return null
 
-          var available = station.slots ? station.slots.filter(function (s) { return s.status === 'AVAILABLE' }).length : 0
-          var total = station.slots ? station.slots.length : 0
-          var mStatus = available > 0 ? 'ACTIVE' : total > 0 ? 'MAINTENANCE' : 'INACTIVE'
+          var rawStatus = (station.status || '').toUpperCase()
+          var mStatus = rawStatus === 'ACTIVE' || rawStatus === 'AVAILABLE' ? 'ACTIVE'
+            : rawStatus === 'MAINTENANCE' ? 'MAINTENANCE'
+            : 'INACTIVE'
           var isSelected = selectedStation && selectedStation.id === station.id
 
           return (
@@ -715,13 +718,13 @@ export default function MapView(props) {
               <Popup>
                 <div className="min-w-[200px]">
                   <div className="flex items-center gap-2 mb-1.5">
-                    <div className={'w-2 h-2 rounded-full shrink-0 ' + (available > 0 ? 'bg-emerald-500' : total > 0 ? 'bg-amber-500' : 'bg-gray-400')} />
+                    <div className={'w-2 h-2 rounded-full shrink-0 ' + (mStatus === 'ACTIVE' ? 'bg-emerald-500' : mStatus === 'MAINTENANCE' ? 'bg-amber-500' : 'bg-gray-400')} />
                     <h3 className="font-semibold text-sm">{station.name}</h3>
                   </div>
                   <p className="text-xs text-gray-500 mb-2 truncate">{station.address}</p>
                   <div className="flex items-center gap-2 text-xs mb-3">
-                    <span className={'px-2 py-0.5 rounded-full font-medium ' + (available > 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200')}>
-                      {available > 0 ? available + '/' + total + ' Available' : 'No slots free'}
+                    <span className={'px-2 py-0.5 rounded-full font-medium ' + (mStatus === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200')}>
+                      {mStatus === 'ACTIVE' ? 'Active' : mStatus === 'MAINTENANCE' ? 'Maintenance' : 'Offline'}
                     </span>
                   </div>
                   <button
@@ -735,6 +738,7 @@ export default function MapView(props) {
             </Marker>
           )
         })}
+        </MarkerClusterGroup>
         <HeatmapLayer visible={showHeatmap} />
       </MapContainer>
 

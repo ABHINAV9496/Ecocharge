@@ -477,16 +477,24 @@ export default function RoutePlanner(props) {
 
             {/* No stops needed */}
             {routePlan.backendPlan && routePlan.backendPlan.stops && routePlan.backendPlan.stops.length === 0 && (
-              <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 text-center">
-                <FiZap className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
-                <div className="text-sm text-white font-medium">No charging stops needed</div>
-                <div className="text-xs text-gray-400 mt-1">Your vehicle has enough range for this trip.</div>
-                {routePlan.backendPlan.final_soc_percent > 0 && (
-                  <div className="text-xs text-emerald-400 mt-1">
-                    Arriving with {routePlan.backendPlan.final_soc_percent}% battery remaining
-                  </div>
-                )}
-              </div>
+              routePlan.backendPlan.note && routePlan.backendPlan.note.indexOf('Insufficient') !== -1 ? (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-center">
+                  <FiZap className="w-6 h-6 text-red-400 mx-auto mb-2" />
+                  <div className="text-sm text-white font-medium">Insufficient range</div>
+                  <div className="text-xs text-gray-400 mt-1">{routePlan.backendPlan.note}</div>
+                </div>
+              ) : (
+                <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 text-center">
+                  <FiZap className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
+                  <div className="text-sm text-white font-medium">No charging stops needed</div>
+                  <div className="text-xs text-gray-400 mt-1">Your vehicle has enough range for this trip.</div>
+                  {routePlan.backendPlan.final_soc_percent > 0 && (
+                    <div className="text-xs text-emerald-400 mt-1">
+                      Arriving with {routePlan.backendPlan.final_soc_percent}% battery remaining
+                    </div>
+                  )}
+                </div>
+              )
             )}
 
             {/* Note/warning */}
