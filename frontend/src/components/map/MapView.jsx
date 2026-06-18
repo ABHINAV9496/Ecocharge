@@ -7,6 +7,7 @@ import { getStations } from '../../api/stations'
 import { searchLocations } from '../../api/geocode'
 import { useWebSocket } from '../../context/WebSocketContext'
 import { useAuth } from '../../context/AuthContext'
+import { useToast } from '../../context/ToastContext'
 import VehicleSelector from './VehicleSelector'
 import VehicleInfoPanel from './VehicleInfoPanel'
 import StationSidebar from './StationSidebar'
@@ -131,7 +132,6 @@ export default function MapView(props) {
   var [isError, setIsError] = useState(false)
   var [errorMessage, setErrorMessage] = useState('')
   var [statusFilter, setStatusFilter] = useState('all')
-  var [bookingMessage, setBookingMessage] = useState(null)
   var [searchSuggestions, setSearchSuggestions] = useState([])
   var [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
   var [showSettings, setShowSettings] = useState(false)
@@ -229,9 +229,10 @@ export default function MapView(props) {
     }
   }, [routePlan])
 
+  var showToast = useToast()
+
   function handleBookingSuccess(message) {
-    setBookingMessage(message)
-    setTimeout(function () { setBookingMessage(null) }, 3000)
+    showToast(message, 'success')
     loadStations()
   }
 
@@ -360,16 +361,6 @@ export default function MapView(props) {
 
   return (
     <div className="h-full w-full relative">
-      {/* Booking toast */}
-      {bookingMessage && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1000] bg-emerald-600 text-white px-5 py-2.5 rounded-xl shadow-lg backdrop-blur-sm text-sm">
-          <div className="flex items-center gap-2">
-            <FiBatteryCharging className="w-4 h-4" />
-            {bookingMessage}
-          </div>
-        </div>
-      )}
-
       {/* Error banner */}
       {isError && (
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1000] bg-red-600/90 backdrop-blur-md text-white px-4 py-2.5 rounded-xl shadow-lg border border-red-400/50 flex items-center gap-3 max-w-md">

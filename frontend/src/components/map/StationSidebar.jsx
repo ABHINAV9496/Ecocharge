@@ -28,6 +28,8 @@ import { getSlots } from '../../api/stations'
 import { createBooking } from '../../api/bookings'
 import { getBalance } from '../../api/wallet'
 import { formatCurrency, getSlotTypeColor, SLOT_TYPE_LABELS } from '../../utils/formatters'
+import { useToast } from '../../context/ToastContext'
+import { SkeletonList } from '../layout/Skeleton'
 
 // ----------------------------------------------------------------
 // MAIN COMPONENT: Station Sidebar
@@ -39,6 +41,7 @@ export default function StationSidebar(props) {
   var onBookSuccess = props.onBookSuccess
   var statuses = props.statuses
   var user = props.user
+  var showToast = useToast()
 
   // ---- STATE ----
   var [slots, setSlots] = useState([])       // List of charging slots for this station
@@ -126,6 +129,7 @@ export default function StationSidebar(props) {
       })
 
       // CASE: Booking was successful — notify the parent and refresh
+      showToast('Booking confirmed at ' + station.name + '!', 'success')
       onBookSuccess('Booking confirmed at ' + station.name + '!')
       loadSlots()
       loadBalance()
@@ -140,6 +144,7 @@ export default function StationSidebar(props) {
         errorMsg = error.message
       }
 
+      showToast(errorMsg, 'error')
       setError(errorMsg)
       console.error('Booking error:', errorMsg)
     }
@@ -240,16 +245,7 @@ export default function StationSidebar(props) {
 
           {/* Loading skeleton */}
           {loading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map(function (item) {
-                return (
-                  <div
-                    key={item}
-                    className="h-24 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse"
-                  />
-                )
-              })}
-            </div>
+            <SkeletonList items={3} />
 
           ) : /* CASE: No slots found */
             effectiveSlots.length === 0 ? (

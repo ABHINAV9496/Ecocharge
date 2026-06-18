@@ -17,6 +17,7 @@ import { FiUsers, FiMapPin, FiCalendar, FiDollarSign, FiTrendingUp, FiRefreshCw 
 import { getStations } from '../../api/stations'
 import { getBookings } from '../../api/bookings'
 import { formatCurrency, formatDate } from '../../utils/formatters'
+import { SkeletonStats, SkeletonTable } from '../layout/Skeleton'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 // ----------------------------------------------------------------
@@ -69,8 +70,10 @@ export default function SuperAdminDashboard() {
   // ---- LOADING STATE ----
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-4 border-emerald-500 border-t-transparent" />
+      <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
+        <div className="h-8 w-48 rounded bg-gray-200 dark:bg-gray-700 animate-pulse mb-6" />
+        <SkeletonStats count={4} />
+        <SkeletonTable rows={3} />
       </div>
     )
   }

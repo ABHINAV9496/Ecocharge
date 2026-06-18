@@ -20,6 +20,8 @@ import { FiUser, FiTruck, FiBatteryCharging, FiCalendar, FiX, FiBarChart2 } from
 import { getProfile, updateProfile } from '../../api/auth'
 import { getBookings, cancelBooking } from '../../api/bookings'
 import { formatCurrency, formatDate, ROLE_LABELS } from '../../utils/formatters'
+import { useToast } from '../../context/ToastContext'
+import { SkeletonStats } from '../layout/Skeleton'
 import WalletCard from '../wallet/WalletCard'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
@@ -33,6 +35,7 @@ export default function DriverDashboard() {
   var [editing, setEditing] = useState(false)  // Is the profile edit form visible?
   var [form, setForm] = useState({})           // Form values during profile editing
   var [loading, setLoading] = useState(true)   // Loading state
+  var showToast = useToast()
   var [profileError, setProfileError] = useState('')  // Error fetching profile
   var [updateError, setUpdateError] = useState('')    // Error updating profile
 
@@ -63,6 +66,7 @@ export default function DriverDashboard() {
       setProfile(response.data)
       setEditing(false)
       setUpdateError('')
+      showToast('Profile updated successfully', 'success')
     } catch (error) {
       // CASE: Form validation error from the API
       var errorMsg = 'Failed to update profile'
@@ -82,9 +86,10 @@ export default function DriverDashboard() {
       await cancelBooking(bookingId)
       // Remove the cancelled booking from the local list so it disappears immediately
       setBookings(bookings.filter(function (b) { return b.id !== bookingId }))
+      showToast('Booking cancelled successfully', 'success')
     } catch (error) {
       console.error('Failed to cancel booking ' + bookingId + ':', error)
-      alert('Could not cancel booking. Please try again.')
+      showToast('Could not cancel booking. Please try again.', 'error')
     }
   }
 
@@ -98,8 +103,9 @@ export default function DriverDashboard() {
   // ---- LOADING STATE ----
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-4 border-emerald-500 border-t-transparent" />
+      <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
+        <div className="h-8 w-48 rounded bg-gray-200 dark:bg-gray-700 animate-pulse mb-6" />
+        <SkeletonStats count={3} />
       </div>
     )
   }

@@ -16,6 +16,8 @@ import { FiPlus, FiMapPin, FiTrendingUp, FiCalendar, FiZap, FiDollarSign, FiEdit
 import { getStations, createStation, updateStation, deleteStation, createSlot } from '../../api/stations'
 import { getBookings } from '../../api/bookings'
 import { formatCurrency, formatDate, SLOT_TYPE_LABELS } from '../../utils/formatters'
+import { useToast } from '../../context/ToastContext'
+import { SkeletonStats } from '../layout/Skeleton'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 
 // ----------------------------------------------------------------
@@ -46,6 +48,7 @@ export default function StationOwnerDashboard() {
   var [formError, setFormError] = useState('')     // Form submission error
   var [slotError, setSlotError] = useState('')     // Slot creation error
   var [showMapPicker, setShowMapPicker] = useState(false)
+  var showToast = useToast()
 
   // ---- FETCH DATA ON MOUNT ----
   useEffect(function () {
@@ -108,12 +111,14 @@ export default function StationOwnerDashboard() {
       // Reset the form
       resetStationForm()
 
+      showToast(editingStation ? 'Station updated successfully' : 'Station created successfully', 'success')
     } catch (error) {
       var errorMsg = 'Failed to save station'
       if (error.response && error.response.data) {
         errorMsg = Object.values(error.response.data).flat().join(', ') || errorMsg
       }
       setFormError(errorMsg)
+      showToast(errorMsg, 'error')
       console.error('Station save error:', errorMsg)
     }
   }
@@ -128,9 +133,10 @@ export default function StationOwnerDashboard() {
       await deleteStation(stationId)
       // Remove the deleted station from the local list
       setStations(stations.filter(function (s) { return s.id !== stationId }))
+      showToast('Station deleted successfully', 'success')
     } catch (error) {
       console.error('Failed to delete station ' + stationId + ':', error)
-      alert('Could not delete station. It may have active bookings.')
+      showToast('Could not delete station. It may have active bookings.', 'error')
     }
   }
 
@@ -149,6 +155,7 @@ export default function StationOwnerDashboard() {
         rate_per_kwh: parseFloat(slotForm.rate_per_kwh),
         off_peak_rate: slotForm.off_peak_rate ? parseFloat(slotForm.off_peak_rate) : null,
       })
+      showToast('Slot added successfully', 'success')
 
       // Reset slot form
       setSlotForm({ stationId: null, slot_type: 'AC_FAST', rate_per_kwh: '', off_peak_rate: '' })
@@ -192,8 +199,9 @@ export default function StationOwnerDashboard() {
   // ---- LOADING STATE ----
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-4 border-emerald-500 border-t-transparent" />
+      <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
+        <div className="h-8 w-48 rounded bg-gray-200 dark:bg-gray-700 animate-pulse mb-6" />
+        <SkeletonStats count={4} />
       </div>
     )
   }
