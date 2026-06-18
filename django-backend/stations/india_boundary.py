@@ -151,6 +151,17 @@ ANDAMAN_BOUNDARY = [
     (13.70, 92.20),
 ]
 
+LAKSHADWEEP_BOUNDARY = [
+    (10.80, 72.50), (10.80, 72.75), (10.60, 72.75), (10.55, 72.70),
+    (10.45, 72.70), (10.40, 72.60), (10.45, 72.50), (10.50, 72.40),
+    (10.60, 72.40), (10.80, 72.50),
+]
+
+DIU_BOUNDARY = [
+    (20.75, 70.95), (20.75, 71.00), (20.70, 71.00), (20.68, 70.98),
+    (20.68, 70.96), (20.70, 70.94), (20.75, 70.95),
+]
+
 import math
 from stations.indian_cities import CITIES
 
@@ -184,17 +195,18 @@ def is_within_india(lat, lng):
         j = i
     if inside:
         return True
-    n_andaman = len(ANDAMAN_BOUNDARY)
-    inside = False
-    j = n_andaman - 1
-    for i in range(n_andaman):
-        yi, xi = ANDAMAN_BOUNDARY[i]
-        yj, xj = ANDAMAN_BOUNDARY[j]
-        if ((yi > lat) != (yj > lat)) and (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi):
-            inside = not inside
-        j = i
-    if inside:
-        return True
+    for poly in [ANDAMAN_BOUNDARY, LAKSHADWEEP_BOUNDARY, DIU_BOUNDARY]:
+        n = len(poly)
+        inside = False
+        j = n - 1
+        for i in range(n):
+            yi, xi = poly[i]
+            yj, xj = poly[j]
+            if ((yi > lat) != (yj > lat)) and (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi):
+                inside = not inside
+            j = i
+        if inside:
+            return True
     cities = _build_city_cache()
     for clat, clng in cities:
         if _haversine_km(lat, lng, clat, clng) <= 50:
