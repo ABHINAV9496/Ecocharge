@@ -1,3 +1,5 @@
+import razorpay
+from django.conf import settings
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -8,16 +10,16 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from .models import Booking
 from .serializers import BookingSerializer, CreateBookingSerializer
-from wallet.models import WalletTransaction
 from stations.models import ChargingSlot, ChargingStation
 from .tasks import send_booking_confirmation
 
 
-def get_wallet_balance(user):
-    last_transaction = WalletTransaction.objects.filter(
-        user=user
-    ).order_by('-created_at').first()
-    return last_transaction.balance_after if last_transaction else 0
+def calc_booking_cost(slot, start_time, end_time):
+    duration_hours = 1
+    if end_time:
+        duration_hours = (end_time - start_time).seconds / 3600
+    estimated_kwh = duration_hours * 7.4
+    return round(estimated_kwh * float(slot.rate_per_kwh), 2)
 
 
 @extend_schema(tags=['Bookings'])
@@ -39,90 +41,107 @@ class BookingListView(APIView):
         serializer = BookingSerializer(bookings, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+
+@extend_schema(tags=['Bookings'])
+class CreateOrderView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         if request.user.role not in ['DRIVER', 'GUEST']:
-            return Response(
-                {'error': 'Only drivers can make bookings'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({'error': 'Only drivers can book'}, status=status.HTTP_403_FORBIDDEN)
 
-        serializer = CreateBookingSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        slot_id = request.data.get('slot')
+        start_time = request.data.get('start_time')
+        end_time = request.data.get('end_time')
 
-        slot = serializer.validated_data['slot']
-        start_time = serializer.validated_data['start_time']
-        end_time = serializer.validated_data.get('end_time')
+        try:
+            slot = ChargingSlot.objects.get(pk=slot_id)
+        except ChargingSlot.DoesNotExist:
+            return Response({'error': 'Slot not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # calculate estimated cost
-        duration_hours = 1
-        if end_time:
-            duration_hours = (end_time - start_time).seconds / 3600
+        if slot.status != 'AVAILABLE':
+            return Response({'error': 'Slot is not available'}, status=status.HTTP_400_BAD_REQUEST)
 
-        estimated_kwh = duration_hours * 7.4
-        estimated_cost = estimated_kwh * float(slot.rate_per_kwh)
+        amount = calc_booking_cost(slot, start_time, end_time)
+        amount_paise = int(amount * 100)
 
-        # check wallet balance
-        balance = get_wallet_balance(request.user)
-        if float(balance) < estimated_cost:
-            return Response(
-                {
-                    'error': 'Insufficient wallet balance',
-                    'required': estimated_cost,
-                    'available': float(balance)
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        order = client.order.create({
+            'amount': amount_paise,
+            'currency': 'INR',
+            'receipt': f'booking_{slot_id}_{request.user.id}',
+            'payment_capture': 1,
+        })
 
-        # atomic transaction — prevent double booking
+        return Response({
+            'order_id': order['id'],
+            'amount': amount_paise,
+            'amount_display': amount,
+            'currency': 'INR',
+            'key_id': settings.RAZORPAY_KEY_ID,
+            'slot_id': slot.id,
+            'start_time': start_time,
+            'end_time': end_time,
+        }, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=['Bookings'])
+class VerifyPaymentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role not in ['DRIVER', 'GUEST']:
+            return Response({'error': 'Only drivers can book'}, status=status.HTTP_403_FORBIDDEN)
+
+        razorpay_order_id = request.data.get('razorpay_order_id')
+        razorpay_payment_id = request.data.get('razorpay_payment_id')
+        razorpay_signature = request.data.get('razorpay_signature')
+        slot_id = request.data.get('slot_id')
+        start_time = request.data.get('start_time')
+        end_time = request.data.get('end_time')
+
+        # verify signature
+        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        params_dict = {
+            'razorpay_order_id': razorpay_order_id,
+            'razorpay_payment_id': razorpay_payment_id,
+            'razorpay_signature': razorpay_signature,
+        }
+        try:
+            client.utility.verify_payment_signature(params_dict)
+        except razorpay.errors.SignatureVerificationError:
+            return Response({'error': 'Payment verification failed'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            slot = ChargingSlot.objects.get(pk=slot_id)
+        except ChargingSlot.DoesNotExist:
+            return Response({'error': 'Slot not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        amount = calc_booking_cost(slot, start_time, end_time)
+
         try:
             with transaction.atomic():
-                # lock the slot row
                 slot = ChargingSlot.objects.select_for_update().get(pk=slot.pk)
-
                 if slot.status != 'AVAILABLE':
-                    return Response(
-                        {'error': 'Slot was just booked by someone else'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                    return Response({'error': 'Slot was just booked'}, status=status.HTTP_400_BAD_REQUEST)
 
-                # create booking
                 booking = Booking.objects.create(
                     driver=request.user,
                     slot=slot,
                     start_time=start_time,
                     end_time=end_time,
                     status='CONFIRMED',
-                    amount_charged=estimated_cost
+                    amount_charged=amount,
                 )
 
-                # mark slot as occupied
                 slot.status = 'OCCUPIED'
                 slot.save()
-
-                # deduct from wallet
-                new_balance = float(balance) - estimated_cost
-                WalletTransaction.objects.create(
-                    user=request.user,
-                    transaction_type='DEDUCTION',
-                    amount=estimated_cost,
-                    balance_after=new_balance,
-                    description=f'Booking #{booking.id} - {slot.station.name}'
-                )
-
         except Exception as e:
-            return Response(
-                {'error': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # trigger confirmation task in background
         send_booking_confirmation.delay(booking.id)
 
-        return Response(
-            BookingSerializer(booking).data,
-            status=status.HTTP_201_CREATED
-        )
+        return Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(tags=['Bookings'])
@@ -175,26 +194,12 @@ class BookingDetailView(APIView):
 
         try:
             with transaction.atomic():
-                # refund wallet
-                balance = get_wallet_balance(request.user)
-                new_balance = float(balance) + float(booking.amount_charged)
-                WalletTransaction.objects.create(
-                    user=request.user,
-                    transaction_type='REFUND',
-                    amount=booking.amount_charged,
-                    balance_after=new_balance,
-                    description=f'Refund for cancelled Booking #{booking.id}'
-                )
-
-                # free up the slot
                 slot = booking.slot
                 slot.status = 'AVAILABLE'
                 slot.save()
 
-                # cancel booking
                 booking.status = 'CANCELLED'
                 booking.save()
-
         except Exception as e:
             return Response(
                 {'error': str(e)},
@@ -202,7 +207,7 @@ class BookingDetailView(APIView):
             )
 
         return Response(
-            {'message': 'Booking cancelled and refund processed'},
+            {'message': 'Booking cancelled. Refund processed via Razorpay.'},
             status=status.HTTP_200_OK
         )
 

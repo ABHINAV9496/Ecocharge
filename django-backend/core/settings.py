@@ -208,6 +208,10 @@ SPECTACULAR_SETTINGS = {
 # Google OAuth — set your Client ID here for production
 GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
 
+# Razorpay — set your test/live keys in .env
+RAZORPAY_KEY_ID = env('RAZORPAY_KEY_ID', default='')
+RAZORPAY_KEY_SECRET = env('RAZORPAY_KEY_SECRET', default='')
+
 # Email / SMTP — set these in .env for welcome emails
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = env('EMAIL_HOST', default='')
