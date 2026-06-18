@@ -1,3 +1,4 @@
+import uuid
 from rest_framework import status, generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,6 +10,7 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from .serializers import RegisterSerializer, UserProfileSerializer
 from .models import CustomUser
 
@@ -197,3 +199,84 @@ class GoogleLoginView(APIView):
             },
             'is_new': created,
         }, status=status.HTTP_200_OK)
+
+
+token_generator = PasswordResetTokenGenerator()
+_password_reset_tokens = {}  # email -> (token, uid)
+
+
+@extend_schema(tags=['Authentication'])
+class PasswordResetRequestView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email')
+        if not email:
+            return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = CustomUser.objects.get(email=email)
+        except CustomUser.DoesNotExist:
+            return Response({'message': 'If this email is registered, a reset link has been sent.'})
+
+        token = token_generator.make_token(user)
+        uid = user.pk
+        _password_reset_tokens[email] = (token, uid)
+
+        reset_url = f"http://localhost:5173/reset-password?uid={uid}&token={token}"
+
+        if settings.EMAIL_HOST and user.email:
+            try:
+                html_content = render_to_string('emails/password_reset.html', {
+                    'username': user.username,
+                    'reset_url': reset_url,
+                })
+                text_content = strip_tags(html_content)
+                email_msg = EmailMultiAlternatives(
+                    subject='EcoCharge — Password Reset',
+                    body=text_content,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[user.email],
+                )
+                email_msg.attach_alternative(html_content, 'text/html')
+                email_msg.send(fail_silently=False)
+            except Exception:
+                pass
+
+        return Response({'message': 'If this email is registered, a reset link has been sent.'})
+
+
+@extend_schema(tags=['Authentication'])
+class PasswordResetConfirmView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        uid = request.data.get('uid')
+        token = request.data.get('token')
+        password = request.data.get('password')
+        password2 = request.data.get('password2')
+
+        if not all([uid, token, password, password2]):
+            return Response({'error': 'uid, token, password, and password2 are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if password != password2:
+            return Response({'error': 'Passwords do not match'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = CustomUser.objects.get(pk=uid)
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'Invalid reset link'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not token_generator.check_token(user, token):
+            return Response({'error': 'Invalid or expired reset link'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.contrib.auth.password_validation import validate_password
+        try:
+            validate_password(password)
+        except Exception as e:
+            return Response({'error': list(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(password)
+        user.save()
+
+        return Response({'message': 'Password has been reset successfully. You can now login.'})
