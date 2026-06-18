@@ -6,7 +6,7 @@ from django.contrib.gis.geos import Point
 from django.db import transaction
 from stations.models import ChargingStation, ChargingSlot
 from stations.seed_data import generate_all_stations
-from stations.india_boundary import is_within_india
+from stations.india_boundary import is_on_indian_landmass
 from users.models import CustomUser
 
 BATCH_SIZE = 50
@@ -108,7 +108,7 @@ class Command(BaseCommand):
                 total_skipped += 1
                 continue
 
-            if not is_within_india(sd["lat"], sd["lng"]):
+            if not is_on_indian_landmass(sd["lat"], sd["lng"]):
                 total_out_of_bounds += 1
                 continue
 
