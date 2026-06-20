@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import { FiSearch, FiMapPin, FiBatteryCharging, FiNavigation, FiDollarSign, FiClock, FiSave, FiZap } from 'react-icons/fi'
+import { useNavigate } from 'react-router-dom'
+import { FiSearch, FiMapPin, FiBatteryCharging, FiNavigation, FiDollarSign, FiClock, FiSave, FiZap, FiMap } from 'react-icons/fi'
 import { createTrip } from '../../api/trips'
 import { planRoute } from '../../api/routePlanner'
-import { getVehicleById, DEFAULT_VEHICLE_ID } from '../../data/vehicleProfiles'
 import { useAuth } from '../../context/AuthContext'
+import { useVehicle } from '../../context/VehicleContext'
+import { searchLocations } from '../../api/geocode'
+import { formatCurrency } from '../../utils/formatters'
+import VehicleSelector from '../map/VehicleSelector'
 
 var OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
 
@@ -16,16 +20,20 @@ function formatDuration(seconds) {
 
 export default function TripPlanner() {
   var { user } = useAuth()
+  var { vehicle, setVehicle, vehicles } = useVehicle()
+  var navigate = useNavigate()
   var [origin, setOrigin] = useState('')
   var [destination, setDestination] = useState('')
   var [originCoords, setOriginCoords] = useState(null)
   var [destCoords, setDestCoords] = useState(null)
   var [batteryPercent, setBatteryPercent] = useState(80)
+  var [mode, setMode] = useState('optimised')
   var [route, setRoute] = useState(null)
   var [isLoading, setIsLoading] = useState(false)
   var [error, setError] = useState('')
   var [saving, setSaving] = useState(false)
   var [saved, setSaved] = useState(false)
+  var [confirming, setConfirming] = useState(false)
   var [originSuggestions, setOriginSuggestions] = useState([])
   var [destSuggestions, setDestSuggestions] = useState([])
   var [showOriginSugg, setShowOriginSugg] = useState(false)
@@ -33,11 +41,6 @@ export default function TripPlanner() {
   var originTimer = useRef(null)
   var destTimer = useRef(null)
   var whatIfTimer = useRef(null)
-  var [vehicle, setVehicle] = useState(null)
-
-  useEffect(function () {
-    getVehicleById(DEFAULT_VEHICLE_ID).then(function (v) { setVehicle(v) })
-  }, [])
 
   async function geocode(query, type) {
     if (!query.trim()) {
@@ -46,10 +49,7 @@ export default function TripPlanner() {
       return
     }
     try {
-      var res = await fetch('/api/geocode/?q=' + encodeURIComponent(query) + '&limit=5')
-      if (!res.ok) return
-      var data = await res.json()
-      if (!Array.isArray(data)) return
+      var data = await searchLocations(query, 5)
       if (type === 'origin') { setOriginSuggestions(data); setShowOriginSugg(data.length > 0) }
       else { setDestSuggestions(data); setShowDestSugg(data.length > 0) }
     } catch (e) { console.error('Geocode error:', e) }
@@ -58,13 +58,13 @@ export default function TripPlanner() {
   function handleOriginInput(v) {
     setOrigin(v); setOriginCoords(null)
     if (originTimer.current) clearTimeout(originTimer.current)
-    originTimer.current = setTimeout(function () { geocode(v, 'origin') }, 600)
+    originTimer.current = setTimeout(function () { geocode(v, 'origin') }, 100)
   }
 
   function handleDestInput(v) {
     setDestination(v); setDestCoords(null)
     if (destTimer.current) clearTimeout(destTimer.current)
-    destTimer.current = setTimeout(function () { geocode(v, 'destination') }, 600)
+    destTimer.current = setTimeout(function () { geocode(v, 'destination') }, 100)
   }
 
   function selectOrigin(s) {
@@ -91,6 +91,14 @@ export default function TripPlanner() {
 
       var osrmRoute = data.routes[0]
       var coordinates = osrmRoute.geometry.coordinates.map(function (c) { return [c[1], c[0]] })
+
+      // Downsample dense route coords for faster planner performance
+      var MAX_PLANNER_POINTS = 1000
+      if (coordinates.length > MAX_PLANNER_POINTS) {
+        var step = coordinates.length / MAX_PLANNER_POINTS
+        coordinates = coordinates.filter(function (_, i) { return i === 0 || i === coordinates.length - 1 || Math.floor(i % step) === 0 })
+      }
+
       var distanceM = osrmRoute.distance
       var durationS = osrmRoute.duration
 
@@ -102,6 +110,7 @@ export default function TripPlanner() {
         battery_start_percent: batteryPercent,
         origin_name: origin,
         dest_name: destination,
+        mode: mode,
       })
 
       var backendPlan = planResult.data
@@ -140,6 +149,7 @@ export default function TripPlanner() {
         battery_start_percent: batteryValue,
         origin_name: route.originName,
         dest_name: route.destName,
+        mode: mode,
       })
       var backendPlan = planResult.data
       setRoute(Object.assign({}, route, {
@@ -179,6 +189,9 @@ export default function TripPlanner() {
         }
       }) : []
 
+      var routeGeo = (bp && bp.waypoint_geometry && bp.waypoint_geometry.length > 0)
+        ? bp.waypoint_geometry : route.route
+
       await createTrip({
         origin: route.originName,
         destination: route.destName,
@@ -191,12 +204,69 @@ export default function TripPlanner() {
         battery_start_percent: batteryPercent,
         battery_end_percent: endPercent,
         total_cost: totalCost,
-        route_geometry: route.route,
+        route_geometry: routeGeo,
         stops: stopData,
       })
       setSaved(true)
     } catch (e) { console.error('Save trip error:', e); setError('Failed to save trip.') }
     setSaving(false)
+  }
+
+  async function handleConfirmTrip() {
+    if (!route || !user) return
+    setConfirming(true)
+
+    if (whatIfTimer.current) {
+      clearTimeout(whatIfTimer.current)
+      whatIfTimer.current = null
+      await recalcPlan(batteryPercent)
+    }
+
+    try {
+      var bp = route.backendPlan
+      var totalCost = bp ? bp.total_cost : 0
+      var endPercent = bp ? bp.final_soc_percent : batteryPercent
+      var stopData = bp ? bp.stops.map(function (s) {
+        return {
+          stop_index: s.stop_index,
+          station_id: s.station_id,
+          station_name: s.station_name,
+          lat: s.lat,
+          lng: s.lng,
+          arrival_soc_percent: s.arrival_soc_percent,
+          departure_soc_percent: s.departure_soc_percent,
+          charge_kwh: s.charge_kwh,
+          charge_time_seconds: s.charge_time_seconds,
+          cost: s.cost,
+          detour_km: s.detour_km,
+        }
+      }) : []
+
+      var routeGeo = (bp && bp.waypoint_geometry && bp.waypoint_geometry.length > 0)
+        ? bp.waypoint_geometry : route.route
+
+      await createTrip({
+        origin: route.originName,
+        destination: route.destName,
+        origin_lat: route.origin.lat,
+        origin_lng: route.origin.lng,
+        dest_lat: route.destination.lat,
+        dest_lng: route.destination.lng,
+        distance_km: route.distance / 1000,
+        duration_minutes: route.duration / 60,
+        battery_start_percent: batteryPercent,
+        battery_end_percent: endPercent,
+        total_cost: totalCost,
+        route_geometry: routeGeo,
+        stops: stopData,
+      })
+      var enhancedRoute = Object.assign({}, route, {
+        waypointGeometry: (bp && bp.waypoint_geometry && bp.waypoint_geometry.length > 10)
+          ? bp.waypoint_geometry : null
+      })
+      navigate('/map', { state: { routePlan: enhancedRoute } })
+    } catch (e) { console.error('Save trip error:', e); setError('Failed to save trip.') }
+    setConfirming(false)
   }
 
   var bp = route ? route.backendPlan : null
@@ -248,10 +318,32 @@ export default function TripPlanner() {
             )}
           </div>
 
+          {/* Vehicle selector */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Vehicle</label>
+            <VehicleSelector vehicle={vehicle} onSelect={setVehicle} vehicles={vehicles} />
+          </div>
+
           <div>
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Starting Battery: <span className="font-bold text-emerald-500">{batteryPercent}%</span></label>
             <input type="range" min="10" max="100" step="5" value={batteryPercent} onChange={function (e) { handleWhatIfChange(Number(e.target.value)) }} className="w-full accent-emerald-500" />
             <div className="flex justify-between text-[10px] text-gray-400 mt-0.5"><span>10%</span><span>100%</span></div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Route Mode</label>
+            <div className="flex gap-2">
+              <button onClick={function () { setMode('fast') }}
+                className={'flex-1 py-2 text-xs font-medium rounded-xl transition-all border ' + (mode === 'fast' ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-emerald-300')}>
+                <span className="block font-bold">Fast</span>
+                <span className="block text-[10px] opacity-70">Minimize time</span>
+              </button>
+              <button onClick={function () { setMode('optimised') }}
+                className={'flex-1 py-2 text-xs font-medium rounded-xl transition-all border ' + (mode === 'optimised' ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-emerald-300')}>
+                <span className="block font-bold">Optimised</span>
+                <span className="block text-[10px] opacity-70">Minimize cost</span>
+              </button>
+            </div>
           </div>
 
           <button onClick={handlePlanRoute} disabled={isLoading || !originCoords || !destCoords}
@@ -282,10 +374,10 @@ export default function TripPlanner() {
                 <span className="text-gray-500 dark:text-gray-400">Charging stops</span>
                 <span className="font-semibold text-amber-500">{stopCount}</span>
               </div>
-              {bp && bp.total_cost > 0 && (
+              {bp && (
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500 dark:text-gray-400">Est. cost</span>
-                  <span className="font-semibold text-emerald-500">₹{bp.total_cost}</span>
+                  <span className="font-semibold text-emerald-500">{formatCurrency(bp.total_cost)}</span>
                 </div>
               )}
               {bp && bp.total_charge_time_seconds > 0 && (
@@ -297,17 +389,20 @@ export default function TripPlanner() {
             </div>
 
             {stopCount > 0 && bp.stops.map(function (stop, i) {
+              var roadInfo = stop.road_distance_km && stop.road_distance_km > 0
+                ? 'Road: ' + stop.road_distance_km.toFixed(1) + ' km' + (stop.road_detour_km ? ' (+' + stop.road_detour_km.toFixed(1) + ' km road)' : '')
+                : stop.distance_from_start_km + ' km from start'
               return (
                 <div key={i} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-semibold text-gray-900 dark:text-white">{stop.station_name || 'Stop ' + (i + 1)}</span>
-                    <span className="text-xs text-gray-500">{stop.distance_from_start_km} km</span>
+                    <span className="text-xs text-gray-500">{roadInfo}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-1.5 text-xs text-gray-500">
                     <span className="flex items-center gap-1"><FiBatteryCharging className="w-3 h-3" />Arrive {stop.arrival_soc_percent}%</span>
                     <span className="flex items-center gap-1"><FiZap className="w-3 h-3" />{stop.charge_kwh} kWh</span>
                     <span className="flex items-center gap-1"><FiClock className="w-3 h-3" />{formatDuration(stop.charge_time_seconds)}</span>
-                    <span className="flex items-center gap-1"><FiDollarSign className="w-3 h-3" />₹{stop.cost}</span>
+                    <span className="flex items-center gap-1"><FiDollarSign className="w-3 h-3" />{formatCurrency(stop.cost)}</span>
                   </div>
                 </div>
               )
@@ -321,10 +416,16 @@ export default function TripPlanner() {
             )}
 
             {user && (
-              <button onClick={handleSaveTrip} disabled={saving || saved}
-                className={'w-full py-2 text-xs font-medium rounded-xl transition-all flex items-center justify-center gap-1.5 ' + (saved ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 hover:text-emerald-600 dark:hover:text-emerald-400')}>
-                {saving ? 'Saving...' : saved ? <><FiSave className="w-3 h-3" /> Trip Saved</> : <><FiSave className="w-3 h-3" /> Save Trip</>}
-              </button>
+              <div className="flex gap-2">
+                <button onClick={handleSaveTrip} disabled={saving || saved}
+                  className={'flex-1 py-2 text-xs font-medium rounded-xl transition-all flex items-center justify-center gap-1.5 ' + (saved ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 hover:text-emerald-600 dark:hover:text-emerald-400')}>
+                  {saving ? 'Saving...' : saved ? <><FiSave className="w-3 h-3" /> Saved</> : <><FiSave className="w-3 h-3" /> Save Trip</>}
+                </button>
+                <button onClick={handleConfirmTrip} disabled={confirming}
+                  className="flex-1 py-2 text-xs font-medium rounded-xl transition-all flex items-center justify-center gap-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50">
+                  {confirming ? 'Confirming...' : <><FiMap className="w-3 h-3" /> Confirm & Show on Map</>}
+                </button>
+              </div>
             )}
           </div>
         )}

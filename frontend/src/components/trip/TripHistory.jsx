@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
-import { FiCalendar, FiMapPin, FiNavigation, FiBatteryCharging, FiDollarSign, FiPlay, FiBarChart2 } from 'react-icons/fi'
+import { FiCalendar, FiNavigation, FiBatteryCharging, FiDollarSign, FiTrash2 } from 'react-icons/fi'
 import { formatCurrency, formatDate } from '../../utils/formatters'
-import { getTrips } from '../../api/trips'
+import { getTrips, deleteTrip } from '../../api/trips'
+import { useToast } from '../../context/ToastContext'
 
 export default function TripHistory() {
+  var showToast = useToast()
   var [trips, setTrips] = useState([])
   var [isLoading, setIsLoading] = useState(true)
   var [error, setError] = useState('')
-  var [replayTripId, setReplayTripId] = useState(null)
 
   useEffect(function () {
     loadTrips()
@@ -25,14 +26,27 @@ export default function TripHistory() {
     setIsLoading(false)
   }
 
+  async function handleDeleteTrip(id) {
+    if (!window.confirm('Are you sure you want to delete this trip?')) return
+    try {
+      await deleteTrip(id)
+      setTrips(trips.filter(function (t) { return t.id !== id }))
+      showToast('Trip deleted successfully', 'success')
+    } catch (e) {
+      console.error('Failed to delete trip:', e)
+      showToast('Could not delete trip', 'error')
+    }
+  }
+
   var stats = {
     total: trips.length,
     totalDistance: trips.reduce(function (sum, t) { return sum + t.distance_km }, 0),
     totalCost: trips.reduce(function (sum, t) { return sum + parseFloat(t.total_cost || 0) }, 0),
   }
 
-  function toggleReplay(tripId) {
-    if (replayTripId === tripId) { setReplayTripId(null) } else { setReplayTripId(tripId) }
+  function truncate(text, max) {
+    if (!text) return ''
+    return text.length > max ? text.slice(0, max) + '…' : text
   }
 
   if (isLoading) {
@@ -81,32 +95,24 @@ export default function TripHistory() {
       ) : (
         <div className="space-y-3">
           {trips.map(function (trip) {
-            var isReplaying = replayTripId === trip.id
             return (
-              <div key={trip.id} className={'rounded-2xl border p-5 transition-all shadow-sm ' + (isReplaying ? 'border-emerald-200 dark:border-emerald-800 bg-white dark:bg-gray-800' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:shadow-md')}>
-                <div className="flex items-center justify-between mb-3">
+              <div key={trip.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                     <FiCalendar className="w-3.5 h-3.5" />
                     {formatDate(trip.created_at)}
                   </div>
-                  <button onClick={function () { toggleReplay(trip.id) }}
-                    className={'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl transition-all ' + (isReplaying ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 hover:text-emerald-600 dark:hover:text-emerald-400')}>
-                    <FiPlay className="w-3 h-3" />
-                    {isReplaying ? 'Hide' : 'Replay'}
+                  <button onClick={function () { handleDeleteTrip(trip.id) }}
+                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all" title="Delete trip">
+                    <FiTrash2 className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="flex-1 space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg flex items-center justify-center shrink-0"><FiMapPin className="w-3 h-3 text-emerald-500" /></div>
-                      <span className="text-sm font-medium text-gray-900 dark:text-white truncate">{trip.origin}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 bg-red-100 dark:bg-red-900/40 rounded-lg flex items-center justify-center shrink-0"><FiNavigation className="w-3 h-3 text-red-500" /></div>
-                      <span className="text-sm font-medium text-gray-900 dark:text-white truncate">{trip.destination}</span>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-6 h-6 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg flex items-center justify-center shrink-0"><FiNavigation className="w-3 h-3 text-emerald-500" /></div>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white" title={trip.origin + ' → ' + trip.destination}>
+                    {truncate(trip.origin, 30)} → {truncate(trip.destination, 30)}
+                  </span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 rounded-xl px-3 py-2">
@@ -114,64 +120,11 @@ export default function TripHistory() {
                   <span className="flex items-center gap-1"><FiBatteryCharging className="w-3 h-3" />{trip.battery_start_percent}% → {trip.battery_end_percent || '?'}%</span>
                   <span className="flex items-center gap-1 font-semibold text-gray-700 dark:text-gray-300"><FiDollarSign className="w-3 h-3" />{formatCurrency(trip.total_cost)}</span>
                 </div>
-
-                {isReplaying && <TripReplayVisualization trip={trip} />}
               </div>
             )
           })}
         </div>
       )}
-    </div>
-  )
-}
-
-function TripReplayVisualization(props) {
-  var trip = props.trip
-  var [progress, setProgress] = useState(0)
-
-  useEffect(function () {
-    var interval = setInterval(function () {
-      setProgress(function (current) {
-        if (current >= 100) return 0
-        return current + 1
-      })
-    }, 100)
-    return function () { clearInterval(interval) }
-  }, [])
-
-  var predictedReadings = trip.predicted_battery_readings || []
-  var batteryStart = trip.battery_start_percent || 80
-  var batteryEnd = trip.battery_end_percent || 20
-  var batteryDiff = batteryStart - batteryEnd
-  var currentBattery = Math.round(batteryStart - batteryDiff * progress / 100)
-
-  var barData = predictedReadings.length > 0 ? predictedReadings : (function () {
-    var result = []
-    for (var i = 0; i < 20; i++) { result.push(batteryStart - batteryDiff * i / 19) }
-    return result
-  })()
-
-  var maxBarValue = Math.max.apply(null, barData)
-
-  return (
-    <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
-      <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-1.5"><FiBarChart2 className="w-3 h-3" />Battery Consumption Replay</h4>
-      <div className="relative h-2.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-        <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-100" style={{ width: progress + '%' }} />
-      </div>
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] text-gray-400">Start: {batteryStart}%</span>
-        <span className="text-[10px] font-bold text-emerald-500">{currentBattery}%</span>
-        <span className="text-[10px] text-gray-400">End: {batteryEnd}%</span>
-      </div>
-      <div className="h-24 bg-gray-50 dark:bg-gray-900 rounded-xl p-2 flex items-end gap-[2px] overflow-hidden">
-        {barData.map(function (value, index) {
-          var barHeight = maxBarValue > 0 ? (value / maxBarValue) * 100 : 50
-          var isActive = Math.floor(progress / (100 / barData.length)) === index
-          return <div key={index} className={'flex-1 rounded-t transition-all duration-100 ' + (isActive ? 'bg-emerald-500' : 'bg-emerald-300 dark:bg-emerald-700')} style={{ height: barHeight + '%' }} title={value ? value.toFixed(1) + '%' : ''} />
-        })}
-      </div>
-      <p className="text-[10px] text-gray-400 text-center">Predicted battery drain over distance</p>
     </div>
   )
 }

@@ -12,8 +12,8 @@
 */
 
 import { useState, useEffect, useRef } from 'react'
-import { FiPlus, FiMapPin, FiTrendingUp, FiCalendar, FiZap, FiDollarSign, FiEdit2, FiTrash2, FiCrosshair } from 'react-icons/fi'
-import { getStations, createStation, updateStation, deleteStation, createSlot } from '../../api/stations'
+import { FiPlus, FiMapPin, FiTrendingUp, FiCalendar, FiZap, FiDollarSign, FiEdit2, FiTrash2, FiCrosshair, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
+import { getMyStations, getStations, createStation, updateStation, deleteStation, createSlot } from '../../api/stations'
 import { getBookings } from '../../api/bookings'
 import { formatCurrency, formatDate, SLOT_TYPE_LABELS } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
@@ -38,6 +38,8 @@ export default function StationOwnerDashboard() {
     status: 'ACTIVE',
   })
   var [loading, setLoading] = useState(true)       // Loading indicator
+  var [page, setPage] = useState(1)                // Pagination page
+  var [totalPages, setTotalPages] = useState(1)    // Total pages
   var [slotForm, setSlotForm] = useState({         // Add slot form fields
     stationId: null,
     slot_type: 'AC_FAST',
@@ -51,30 +53,38 @@ export default function StationOwnerDashboard() {
   var [showMapPicker, setShowMapPicker] = useState(false)
   var showToast = useToast()
 
-  // ---- FETCH DATA ON MOUNT ----
+  // ---- FETCH DATA ----
+  function loadStations() {
+    getMyStations({ page: page, page_size: 10 }).then(function (res) {
+      setStations(res.data.results || [])
+      setTotalPages(Math.ceil((res.data.count || 0) / 10) || 1)
+    }).catch(function (error) {
+      console.error('Failed to load stations:', error)
+      setError('Could not load your stations.')
+    })
+  }
+
+  function loadBookings() {
+    getBookings().then(function (res) {
+      setBookings(res.data)
+    }).catch(function (error) {
+      console.error('Failed to load bookings:', error)
+      setBookingError('Could not load bookings.')
+    })
+  }
+
   useEffect(function () {
     async function loadData() {
-      try {
-        var stationsResponse = await getStations()
-        setStations(stationsResponse.data)
-      } catch (error) {
-        console.error('Failed to load stations:', error)
-        setError('Could not load your stations.')
-      }
-
-      try {
-        var bookingsResponse = await getBookings()
-        setBookings(bookingsResponse.data)
-      } catch (error) {
-        console.error('Failed to load bookings:', error)
-        setBookingError('Could not load bookings.')
-      }
-
+      setLoading(true)
+      await Promise.all([
+        loadStations(),
+        loadBookings(),
+      ])
       setLoading(false)
     }
 
     loadData()
-  }, [])
+  }, [page])
 
   // ---- COMPUTED STATS ----
   var stationCount = stations.length
@@ -112,8 +122,7 @@ export default function StationOwnerDashboard() {
       }
 
       // Refresh the station list from the API
-      var freshStations = await getStations()
-      setStations(freshStations.data)
+      loadStations()
 
       // Reset the form
       resetStationForm()
@@ -139,7 +148,7 @@ export default function StationOwnerDashboard() {
     try {
       await deleteStation(stationId)
       // Remove the deleted station from the local list
-      setStations(stations.filter(function (s) { return s.id !== stationId }))
+      loadStations()
       showToast('Station deleted successfully', 'success')
     } catch (error) {
       console.error('Failed to delete station ' + stationId + ':', error)
@@ -168,8 +177,7 @@ export default function StationOwnerDashboard() {
       setSlotForm({ stationId: null, slot_type: 'AC_FAST', rate_per_kwh: '', off_peak_rate: '' })
 
       // Refresh the full station list
-      var freshStations = await getStations()
-      setStations(freshStations.data)
+      loadStations()
 
     } catch (error) {
       var errorMsg = 'Failed to add slot'
@@ -600,6 +608,27 @@ export default function StationOwnerDashboard() {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {stations.length > 0 && totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 p-4 border-t border-gray-200 dark:border-gray-700">
+            <button onClick={function () { setPage(Math.max(1, page - 1)) }} disabled={page <= 1}
+              className="p-2 text-gray-500 dark:text-gray-400 hover:text-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+              <FiChevronLeft className="w-4 h-4" />
+            </button>
+            {Array.from({ length: totalPages }, function (_, i) { return i + 1 }).map(function (p) {
+              return (
+                <button key={p} onClick={function () { setPage(p) }}
+                  className={'w-8 h-8 text-xs font-medium rounded-lg transition-all ' + (p === page ? 'bg-emerald-500 text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700')}>
+                  {p}
+                </button>
+              )
+            })}
+            <button onClick={function () { setPage(Math.min(totalPages, page + 1)) }} disabled={page >= totalPages}
+              className="p-2 text-gray-500 dark:text-gray-400 hover:text-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+              <FiChevronRight className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>

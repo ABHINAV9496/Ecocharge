@@ -11,3 +11,7 @@ export function getTrip(id) {
 export function createTrip(data) {
   return apiClient.post('/api/trips/', data)
 }
+
+export function deleteTrip(id) {
+  return apiClient.delete('/api/trips/' + id + '/')
+}

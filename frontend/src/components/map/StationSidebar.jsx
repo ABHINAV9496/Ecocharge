@@ -7,7 +7,7 @@
   1. Station name, address, and amenities at the top
   2. A list of charging slots (the dock/port at that station)
   3. Each slot shows: type (AC/DC/Fast), rate, availability status
-  4. DRIVER users can book an available slot with one click via Razorpay
+  4. DRIVER users can book an available slot with one click
 
   Slot colors:
   - Green border = Available (can be booked)
@@ -16,15 +16,14 @@
 
   How booking works:
   1. User clicks "Book" on an available slot
-  2. Creates a Razorpay order, opens checkout modal
-  3. On payment success, verifies the payment and confirms the booking
-  4. The parent map refreshes to show updated slot status
+  2. Creates the booking directly via the API
+  3. On success, the parent map refreshes to show updated slot status
 */
 
 import { useState, useEffect } from 'react'
 import { FiX, FiClock, FiDollarSign, FiBatteryCharging, FiHeart, FiStar } from 'react-icons/fi'
 import { getSlots, toggleFavorite, getReviews, createReview } from '../../api/stations'
-import { createRazorpayOrder, verifyRazorpayPayment } from '../../api/bookings'
+import { createBooking } from '../../api/bookings'
 import { getSlotTypeColor, SLOT_TYPE_LABELS } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
 import { SkeletonList } from '../layout/Skeleton'
@@ -126,7 +125,7 @@ export default function StationSidebar(props) {
     })
   })
 
-  // ---- HANDLE BOOKING (via Razorpay) ----
+  // ---- HANDLE BOOKING ----
   async function handleBook(slot) {
     if (!user || user.role !== 'DRIVER') {
       setError('Please login as a driver to book')
@@ -141,58 +140,15 @@ export default function StationSidebar(props) {
       var startTime = now.toISOString()
       var endTime = new Date(now.getTime() + 60 * 60 * 1000).toISOString()
 
-      // Step 1: Create Razorpay order
-      var orderResponse = await createRazorpayOrder({
+      await createBooking({
         slot: slot.id,
         start_time: startTime,
         end_time: endTime,
       })
 
-      var order = orderResponse.data
-
-      // Step 2: Open Razorpay checkout
-      var options = {
-        key: order.key_id,
-        amount: order.amount,
-        currency: order.currency,
-        name: 'EcoCharge',
-        description: 'Booking at ' + station.name,
-        order_id: order.order_id,
-        handler: async function (paymentResponse) {
-          try {
-            await verifyRazorpayPayment({
-              razorpay_order_id: paymentResponse.razorpay_order_id,
-              razorpay_payment_id: paymentResponse.razorpay_payment_id,
-              razorpay_signature: paymentResponse.razorpay_signature,
-              slot_id: order.slot_id,
-              start_time: order.start_time,
-              end_time: order.end_time,
-            })
-            showToast('Booking confirmed at ' + station.name + '!', 'success')
-            onBookSuccess('Booking confirmed at ' + station.name + '!')
-            loadSlots()
-          } catch (verifyError) {
-            showToast('Payment succeeded but booking failed. Contact support.', 'error')
-            console.error('Verify error:', verifyError)
-          }
-        },
-        modal: {
-          ondismiss: function () {
-            showToast('Payment cancelled', 'info')
-          }
-        },
-        prefill: {
-          name: user.username || '',
-          email: user.email || '',
-        },
-        theme: { color: '#10b981' },
-      }
-
-      var rzp = new window.Razorpay(options)
-      rzp.on('payment.failed', function (response) {
-        showToast('Payment failed: ' + (response.error.description || 'Unknown error'), 'error')
-      })
-      rzp.open()
+      showToast('Booking confirmed at ' + station.name + '!', 'success')
+      onBookSuccess('Booking confirmed at ' + station.name + '!')
+      loadSlots()
 
     } catch (error) {
       var errorMsg = 'Booking failed'

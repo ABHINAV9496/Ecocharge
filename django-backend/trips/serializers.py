@@ -31,6 +31,7 @@ class TripPlanRequestSerializer(serializers.Serializer):
     battery_start_percent = serializers.FloatField(min_value=0, max_value=100)
     origin_name = serializers.CharField(required=False, default='Origin')
     dest_name = serializers.CharField(required=False, default='Destination')
+    mode = serializers.ChoiceField(choices=['fast', 'optimised'], default='optimised')
 
 
 class TripPlanStopSerializer(serializers.Serializer):
@@ -49,6 +50,8 @@ class TripPlanStopSerializer(serializers.Serializer):
     charger_power_kw = serializers.FloatField()
     cost = serializers.FloatField()
     detour_km = serializers.FloatField()
+    road_distance_km = serializers.FloatField(default=0)
+    road_detour_km = serializers.FloatField(default=0)
     alternatives = serializers.ListField(child=serializers.DictField(), required=False, default=list)
 
 
@@ -74,3 +77,4 @@ class TripPlanResponseSerializer(serializers.Serializer):
     origin_name = serializers.CharField()
     dest_name = serializers.CharField()
     note = serializers.CharField(required=False, default='')
+    waypoint_geometry = serializers.ListField(child=serializers.ListField(child=serializers.FloatField()), required=False, default=list)

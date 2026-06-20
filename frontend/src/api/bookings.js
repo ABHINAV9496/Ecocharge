@@ -2,7 +2,7 @@
   Bookings API
   ------------
   Manages slot reservations. Users book a charging slot for a
-  specific time period. Payments are handled via Razorpay.
+  specific time period.
 */
 
 import apiClient from './client'
@@ -22,16 +22,10 @@ export function cancelBooking(id) {
   return apiClient.delete('/api/bookings/' + id + '/')
 }
 
-// Create a Razorpay order for booking a slot
+// Create a booking for a charging slot
 // data: { slot, start_time, end_time }
-export function createRazorpayOrder(data) {
-  return apiClient.post('/api/bookings/create-order/', data)
-}
-
-// Verify Razorpay payment and confirm the booking
-// data: { razorpay_order_id, razorpay_payment_id, razorpay_signature, slot_id, start_time, end_time }
-export function verifyRazorpayPayment(data) {
-  return apiClient.post('/api/bookings/verify-payment/', data)
+export function createBooking(data) {
+  return apiClient.post('/api/bookings/create/', data)
 }
 
 // Get heatmap data for the map — returns station usage intensity

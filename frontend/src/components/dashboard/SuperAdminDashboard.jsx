@@ -14,7 +14,7 @@
 
 import { useState, useEffect } from 'react'
 import { FiUsers, FiMapPin, FiCalendar, FiDollarSign, FiTrendingUp, FiRefreshCw } from 'react-icons/fi'
-import { getStations } from '../../api/stations'
+import { getStations, getStationStats } from '../../api/stations'
 import { getBookings } from '../../api/bookings'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { SkeletonStats, SkeletonTable } from '../layout/Skeleton'
@@ -25,53 +25,50 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContai
 // ----------------------------------------------------------------
 export default function SuperAdminDashboard() {
   // ---- STATE ----
-  var [stations, setStations] = useState([])   // All stations on the platform
-  var [bookings, setBookings] = useState([])    // All bookings on the platform
-  var [loading, setLoading] = useState(true)    // Loading indicator
-  var [error, setError] = useState('')          // Error message
-  var [bookingError, setBookingError] = useState('')  // Error fetching bookings
-
+  var [stations, setStations] = useState([])
+  var [bookings, setBookings] = useState([])
+  var [stats, setStats] = useState(null)
+  var [loading, setLoading] = useState(true)
+  var [error, setError] = useState('')
+  var [bookingError, setBookingError] = useState('')
 
   // ---- FETCH DATA ON MOUNT ----
   useEffect(function () {
     async function loadData() {
       try {
-        var stationsResponse = await getStations()
-        setStations(stationsResponse.data)
+        var [statsRes, stationsRes, bookingsRes] = await Promise.all([
+          getStationStats(),
+          getStations({ page_size: 200 }),
+          getBookings(),
+        ])
+        setStats(statsRes.data)
+        setStations(stationsRes.data.results || stationsRes.data)
+        setBookings(bookingsRes.data)
       } catch (error) {
-        console.error('Failed to load stations:', error)
-        setError('Could not load stations.')
+        console.error('Failed to load dashboard data:', error)
+        setError('Could not load dashboard data.')
       }
-
-      try {
-        var bookingsResponse = await getBookings()
-        setBookings(bookingsResponse.data)
-      } catch (error) {
-        console.error('Failed to load bookings:', error)
-        setBookingError('Could not load bookings.')
-      }
-
       setLoading(false)
     }
 
     loadData()
   }, [])
   // ---- COMPUTED STATS ----
-  var stats = {
-    totalStations: stations.length,
-    totalSlots: stations.reduce(function (sum, station) {
-      return sum + (station.slots ? station.slots.length : 0)
-    }, 0),
-    totalBookings: bookings.length,
-    revenue: bookings.reduce(function (sum, booking) {
-      return sum + parseFloat(booking.amount_charged || 0)
-    }, 0),
-    activeDrivers: new Set(bookings.map(function (b) { return b.driver_username })).size,
-    availableSlots: stations.reduce(function (sum, station) {
-      var slots = station.slots || []
-      return sum + slots.filter(function (s) { return s.status === 'AVAILABLE' }).length
-    }, 0),
-  }
+  var displayStats = stats ? [
+    { label: 'Stations', value: stats.total_stations, icon: FiMapPin, color: 'text-emerald-500' },
+    { label: 'Total Slots', value: stats.total_slots, icon: FiTrendingUp, color: 'text-blue-500' },
+    { label: 'Available', value: stats.available_slots, icon: FiTrendingUp, color: 'text-green-500' },
+    { label: 'Bookings', value: stats.total_bookings, icon: FiCalendar, color: 'text-purple-500' },
+    { label: 'Active Drivers', value: stats.active_drivers, icon: FiUsers, color: 'text-orange-500' },
+    { label: 'Revenue', value: formatCurrency(stats.revenue), icon: FiDollarSign, color: 'text-pink-500' },
+  ] : [
+    { label: 'Stations', value: stations.length, icon: FiMapPin, color: 'text-emerald-500' },
+    { label: 'Total Slots', value: stations.reduce(function (s, st) { return s + (st.slots ? st.slots.length : 0) }, 0), icon: FiTrendingUp, color: 'text-blue-500' },
+    { label: 'Available', value: stations.reduce(function (s, st) { return s + (st.slots ? st.slots.filter(function (x) { return x.status === 'AVAILABLE' }).length : 0) }, 0), icon: FiTrendingUp, color: 'text-green-500' },
+    { label: 'Bookings', value: bookings.length, icon: FiCalendar, color: 'text-purple-500' },
+    { label: 'Active Drivers', value: new Set(bookings.map(function (b) { return b.driver_username })).size, icon: FiUsers, color: 'text-orange-500' },
+    { label: 'Revenue', value: formatCurrency(bookings.reduce(function (s, b) { return s + parseFloat(b.amount_charged || 0) }, 0)), icon: FiDollarSign, color: 'text-pink-500' },
+  ]
 
   // ---- LOADING STATE ----
   if (loading) {
@@ -113,14 +110,7 @@ export default function SuperAdminDashboard() {
 
       {/* ---- STATS CARDS ---- */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {[
-          { label: 'Stations', value: stats.totalStations, icon: FiMapPin, color: 'text-emerald-500' },
-          { label: 'Total Slots', value: stats.totalSlots, icon: FiTrendingUp, color: 'text-blue-500' },
-          { label: 'Available', value: stats.availableSlots, icon: FiTrendingUp, color: 'text-green-500' },
-          { label: 'Bookings', value: stats.totalBookings, icon: FiCalendar, color: 'text-purple-500' },
-          { label: 'Active Drivers', value: stats.activeDrivers, icon: FiUsers, color: 'text-orange-500' },
-          { label: 'Revenue', value: formatCurrency(stats.revenue), icon: FiDollarSign, color: 'text-pink-500' },
-        ].map(function (stat) {
+        {displayStats.map(function (stat) {
           var StatIcon = stat.icon
           return (
             <div key={stat.label} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">

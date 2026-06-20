@@ -21,11 +21,18 @@ const apiClient = axios.create({
 // Authorization header if we have a saved access token
 apiClient.interceptors.request.use(function (config) {
   // Get the access token from browser storage
-  var token = localStorage.getItem('access_token')
+  var raw = localStorage.getItem('access_token')
 
-  // If token exists, add it to the request headers
-  if (token) {
-    config.headers.Authorization = 'Bearer ' + token
+  // Sanitise: clear any stale "undefined" string stored by earlier bugs
+  if (raw === 'undefined' || raw === 'null') {
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    localStorage.removeItem('user')
+    raw = null
+  }
+
+  if (raw) {
+    config.headers.Authorization = 'Bearer ' + raw
   }
 
   return config

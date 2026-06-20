@@ -12,10 +12,10 @@ from users.models import CustomUser
 BATCH_SIZE = 50
 
 SLOT_TYPE_RATES = {
-    "AC_SLOW": (6, 9),
-    "AC_FAST": (9, 13),
-    "DC_FAST": (13, 17),
-    "DC_ULTRA": (17, 22),
+    "AC_SLOW": (8, 12),
+    "AC_FAST": (10, 14),
+    "DC_FAST": (14, 18),
+    "DC_ULTRA": (18, 22),
 }
 
 SLOT_STATUS_WEIGHTS = ["AVAILABLE"] * 85 + ["OCCUPIED"] * 10 + ["FAULT"] * 5

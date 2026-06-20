@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
+import { VehicleProvider } from './context/VehicleContext'
 import ProtectedRoute from './components/layout/ProtectedRoute'
 import ErrorBoundary from './components/layout/ErrorBoundary'
 import Home from './pages/Home'
@@ -29,42 +30,44 @@ function App() {
 
   return (
     <ToastProvider>
-      <Routes>
-        <Route path="/" element={<ErrorBoundary><Home /></ErrorBoundary>} />
-        <Route path="/about" element={<ErrorBoundary><About /></ErrorBoundary>} />
-        <Route path="/features" element={<ErrorBoundary><Features /></ErrorBoundary>} />
-        <Route path="/contact" element={<ErrorBoundary><Contact /></ErrorBoundary>} />
-        <Route path="/login" element={<ErrorBoundary><Login /></ErrorBoundary>} />
-        <Route path="/register" element={<ErrorBoundary>{user ? <Navigate to="/map" replace /> : <Register />}</ErrorBoundary>} />
-        <Route path="/forgot-password" element={<ErrorBoundary><ForgotPassword /></ErrorBoundary>} />
-        <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
-        <Route path="/map" element={<ErrorBoundary><MapPage /></ErrorBoundary>} />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute roles={['DRIVER', 'STATION_OWNER', 'SUPER_ADMIN']}>
-              <ErrorBoundary><DashboardPage /></ErrorBoundary>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/trips"
-          element={
-            <ProtectedRoute roles={['DRIVER']}>
-              <ErrorBoundary><TripsPage /></ErrorBoundary>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute roles={['STATION_OWNER', 'SUPER_ADMIN']}>
-              <ErrorBoundary><AdminPage /></ErrorBoundary>
-            </ProtectedRoute>
-          }
-        />
-        <Route path="*" element={<Navigate to="/map" replace />} />
-      </Routes>
+      <VehicleProvider>
+        <Routes>
+          <Route path="/" element={<ErrorBoundary><Home /></ErrorBoundary>} />
+          <Route path="/about" element={<ErrorBoundary><About /></ErrorBoundary>} />
+          <Route path="/features" element={<ErrorBoundary><Features /></ErrorBoundary>} />
+          <Route path="/contact" element={<ErrorBoundary><Contact /></ErrorBoundary>} />
+          <Route path="/login" element={<ErrorBoundary><Login /></ErrorBoundary>} />
+          <Route path="/register" element={<ErrorBoundary>{user ? <Navigate to="/map" replace /> : <Register />}</ErrorBoundary>} />
+          <Route path="/forgot-password" element={<ErrorBoundary><ForgotPassword /></ErrorBoundary>} />
+          <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
+          <Route path="/map" element={<ErrorBoundary><MapPage /></ErrorBoundary>} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute roles={['DRIVER', 'STATION_OWNER', 'SUPER_ADMIN']}>
+                <ErrorBoundary><DashboardPage /></ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/trips"
+            element={
+              <ProtectedRoute roles={['DRIVER']}>
+                <ErrorBoundary><TripsPage /></ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute roles={['STATION_OWNER', 'SUPER_ADMIN']}>
+                <ErrorBoundary><AdminPage /></ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/map" replace />} />
+        </Routes>
+      </VehicleProvider>
     </ToastProvider>
   )
 }

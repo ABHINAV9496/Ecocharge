@@ -30,7 +30,7 @@ SECRET_KEY = env('DJANGO_SECRET_KEY', default='django-insecure-dev-key-change-in
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = env.list('DJANGO_ALLOWED_HOSTS', default=['localhost', '127.0.0.1'])
+ALLOWED_HOSTS = env.list('DJANGO_ALLOWED_HOSTS', default=['localhost', '127.0.0.1', 'testserver'])
 
 
 # Application definition
@@ -208,10 +208,6 @@ SPECTACULAR_SETTINGS = {
 # Google OAuth — set your Client ID here for production
 GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
 
-# Razorpay — set your test/live keys in .env
-RAZORPAY_KEY_ID = env('RAZORPAY_KEY_ID', default='')
-RAZORPAY_KEY_SECRET = env('RAZORPAY_KEY_SECRET', default='')
-
 # Email / SMTP — set these in .env for welcome emails
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = env('EMAIL_HOST', default='')
@@ -236,10 +232,7 @@ ASGI_APPLICATION = 'core.asgi.application'
 
 CHANNEL_LAYERS = {
     'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [('redis', 6379)],
-        },
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
     },
 }
 

@@ -24,7 +24,7 @@ class TripListCreateView(generics.ListCreateAPIView):
         return Trip.objects.filter(driver=self.request.user).order_by('-created_at')
 
 
-class TripDetailView(generics.RetrieveAPIView):
+class TripDetailView(generics.RetrieveDestroyAPIView):
     serializer_class = TripSerializer
     permission_classes = [permissions.IsAuthenticated, IsDriver]
 
@@ -46,9 +46,16 @@ class TripPlanView(APIView):
         )
 
         route_coords = data['route_coords']
+
+        # Downsample for planner performance — 1 point per ~5km is plenty for station proximity
+        MAX_COORDS = 1000
+        if len(route_coords) > MAX_COORDS:
+            step = len(route_coords) / MAX_COORDS
+            route_coords = [c for i, c in enumerate(route_coords) if i == 0 or i == len(route_coords) - 1 or int(i % step) == 0]
+
         lats = [c[0] for c in route_coords]
         lngs = [c[1] for c in route_coords]
-        buffer_deg = 0.5
+        buffer_deg = 1.0
         bounds_rect = Polygon.from_bbox((
             max(-180, min(lngs) - buffer_deg),
             max(-90, min(lats) - buffer_deg),
@@ -84,10 +91,11 @@ class TripPlanView(APIView):
             consumption_wh_per_km=vehicle.consumption_wh_per_km,
             battery_kwh=vehicle.battery_kwh,
             battery_start_percent=data['battery_start_percent'],
+            mode=data.get('mode', 'optimised'),
         )
 
         plan = planner.plan_route(
-            route_coords=data['route_coords'],
+            route_coords=route_coords,
             total_distance_m=data['total_distance_m'],
             stations=stations_data,
             origin_name=data.get('origin_name', 'Origin'),

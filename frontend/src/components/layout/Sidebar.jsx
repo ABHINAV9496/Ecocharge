@@ -23,7 +23,7 @@ var allNavItems = [
   { path: '/map',        label: 'Map',        icon: FiMap,        roles: ['DRIVER', 'GUEST', 'STATION_OWNER', 'SUPER_ADMIN'] },
   { path: '/trips',      label: 'Trip Planner', icon: FiNavigation, roles: ['DRIVER'] },
   { path: '/dashboard',  label: 'Dashboard',  icon: FiGrid,       roles: ['DRIVER', 'STATION_OWNER', 'SUPER_ADMIN'] },
-  { path: '/admin',      label: 'Admin',      icon: FiUsers,      roles: ['STATION_OWNER', 'SUPER_ADMIN'] },
+  { path: '/admin',      label: 'Admin',      icon: FiUsers,      roles: ['SUPER_ADMIN'] },
 ]
 
 export default function Sidebar() {

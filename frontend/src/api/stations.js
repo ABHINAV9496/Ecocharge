@@ -13,6 +13,16 @@ export function getStations(params) {
   return apiClient.get('/api/stations/', { params: params })
 }
 
+// Get platform-wide station stats (SUPER_ADMIN only)
+export function getStationStats() {
+  return apiClient.get('/api/stations/stats/')
+}
+
+// Get paginated stations owned by current user
+export function getMyStations(params) {
+  return apiClient.get('/api/stations/my-stations/', { params: params })
+}
+
 // Get a single station by its ID
 export function getStation(id) {
   return apiClient.get('/api/stations/' + id + '/')

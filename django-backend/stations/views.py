@@ -2,11 +2,14 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.pagination import PageNumberPagination
 from django.contrib.gis.geos import Point, Polygon
 from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.measure import D
 from drf_spectacular.utils import extend_schema
+from django.db.models import Count, Q, Sum
 from .models import ChargingStation, ChargingSlot, UserFavoriteStation, StationReview
+from bookings.models import Booking
 from .serializers import (
     ChargingStationSerializer,
     CreateStationSerializer,
@@ -16,11 +19,18 @@ from .serializers import (
 )
 
 
+class StationPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
 @extend_schema(tags=['Stations'])
 class StationListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
+        page = request.query_params.get('page')
         lat = request.query_params.get('lat')
         lng = request.query_params.get('lng')
         radius = request.query_params.get('radius')
@@ -33,7 +43,7 @@ class StationListView(APIView):
         max_lng = request.query_params.get('max_lng')
         bounds = request.query_params.get('bounds')
 
-        stations = ChargingStation.objects.all()
+        stations = ChargingStation.objects.all().select_related('owner').prefetch_related('slots').order_by('-created_at')
 
         if lat and lng and radius:
             user_location = Point(float(lng), float(lat), srid=4326)
@@ -69,6 +79,16 @@ class StationListView(APIView):
                 stations = stations.filter(
                     location__within=Polygon.from_bbox((west, south, east, north))
                 )
+
+        if page:
+            paginator = StationPagination()
+            page_obj = paginator.paginate_queryset(stations, request)
+            serializer = ChargingStationSerializer(page_obj, many=True)
+            return paginator.get_paginated_response(serializer.data)
+
+        # Limit unfiltered results to avoid serializing thousands of stations
+        if not any([lat, lng, slot_type, station_status, amenities_param, min_lat, bounds]):
+            stations = stations[:200]
 
         serializer = ChargingStationSerializer(stations, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -265,7 +285,7 @@ class StationBatchView(APIView):
             user_location = Point(float(lng), float(lat), srid=4326)
             qs = ChargingStation.objects.filter(
                 location__distance_lte=(user_location, D(km=float(radius)))
-            )
+            ).select_related('owner').prefetch_related('slots')
             for s in qs:
                 if s.id not in all_ids:
                     all_ids[s.id] = True
@@ -288,9 +308,57 @@ class StationByRouteView(APIView):
         line = LineString([(float(w[1]), float(w[0])) for w in waypoints], srid=4326)
         corridor = line.buffer(float(radius) / 111.0)
 
-        stations = ChargingStation.objects.filter(location__within=corridor)
+        stations = ChargingStation.objects.filter(
+            location__within=corridor
+        ).select_related('owner').prefetch_related('slots')
         serializer = ChargingStationSerializer(stations, many=True)
         return Response({'stations': serializer.data, 'count': len(serializer.data)})
+
+
+@extend_schema(tags=['Stations'])
+@extend_schema(tags=['Stations'])
+class StationStatsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != 'SUPER_ADMIN':
+            return Response({'error': 'Only SUPER_ADMIN can view stats'}, status=403)
+
+        station_qs = ChargingStation.objects.all()
+        total_stations = station_qs.count()
+        slot_stats = ChargingSlot.objects.aggregate(
+            total=Count('id'),
+            available=Count('id', filter=Q(status='AVAILABLE')),
+        )
+        booking_qs = Booking.objects.all()
+        total_bookings = booking_qs.count()
+        revenue = booking_qs.aggregate(
+            total=Sum('amount_charged')
+        )['total'] or 0
+        active_drivers = booking_qs.values('driver_id').distinct().count()
+
+        return Response({
+            'total_stations': total_stations,
+            'total_slots': slot_stats['total'],
+            'available_slots': slot_stats['available'],
+            'total_bookings': total_bookings,
+            'revenue': float(revenue),
+            'active_drivers': active_drivers,
+        })
+
+
+@extend_schema(tags=['Stations'])
+class MyStationListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        stations = ChargingStation.objects.filter(
+            owner=request.user
+        ).select_related('owner').prefetch_related('slots').order_by('-created_at')
+        paginator = StationPagination()
+        page = paginator.paginate_queryset(stations, request)
+        serializer = ChargingStationSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 @extend_schema(tags=['Stations'])

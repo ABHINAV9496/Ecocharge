@@ -4,13 +4,16 @@ from .views import (
     SlotListView, SlotDetailView,
     StationBatchView, StationByRouteView,
     FavoriteStationToggleView, FavoriteStationListView,
-    StationReviewListCreateView,
+    StationReviewListCreateView, MyStationListView,
+    StationStatsView,
 )
 
 urlpatterns = [
     path('', StationListView.as_view(), name='station-list'),
     path('batch/', StationBatchView.as_view(), name='station-batch'),
     path('by_route/', StationByRouteView.as_view(), name='station-by-route'),
+    path('my-stations/', MyStationListView.as_view(), name='my-stations'),
+    path('stats/', StationStatsView.as_view(), name='station-stats'),
     path('favorites/', FavoriteStationListView.as_view(), name='favorite-list'),
     path('favorites/toggle/', FavoriteStationToggleView.as_view(), name='favorite-toggle'),
     path('<int:pk>/', StationDetailView.as_view(), name='station-detail'),
