@@ -15,7 +15,9 @@ import ResetPassword from './pages/ResetPassword'
 import MapPage from './pages/MapPage'
 import DashboardPage from './pages/DashboardPage'
 import TripsPage from './pages/TripsPage'
+import BookingsPage from './pages/BookingsPage'
 import AdminPage from './pages/AdminPage'
+import StationDetailPage from './pages/StationDetailPage'
 
 function App() {
   var { user, loading } = useAuth()
@@ -41,6 +43,7 @@ function App() {
           <Route path="/forgot-password" element={<ErrorBoundary><ForgotPassword /></ErrorBoundary>} />
           <Route path="/reset-password" element={<ErrorBoundary><ResetPassword /></ErrorBoundary>} />
           <Route path="/map" element={<ErrorBoundary><MapPage /></ErrorBoundary>} />
+          <Route path="/stations/:id" element={<ErrorBoundary><StationDetailPage /></ErrorBoundary>} />
           <Route
             path="/dashboard"
             element={
@@ -54,6 +57,14 @@ function App() {
             element={
               <ProtectedRoute roles={['DRIVER']}>
                 <ErrorBoundary><TripsPage /></ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/bookings"
+            element={
+              <ProtectedRoute roles={['DRIVER']}>
+                <ErrorBoundary><BookingsPage /></ErrorBoundary>
               </ProtectedRoute>
             }
           />

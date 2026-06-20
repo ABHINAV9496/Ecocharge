@@ -14,13 +14,14 @@
 */
 
 import { Link, useLocation } from 'react-router-dom'
-import { FiMap, FiGrid, FiNavigation, FiUsers } from 'react-icons/fi'
+import { FiMap, FiGrid, FiNavigation, FiUsers, FiCalendar } from 'react-icons/fi'
 import { useAuth } from '../../context/AuthContext'
 
 // Define all available navigation items
 // Each item has: path (URL), label (display name), icon, and allowed roles
 var allNavItems = [
   { path: '/map',        label: 'Map',        icon: FiMap,        roles: ['DRIVER', 'GUEST', 'STATION_OWNER', 'SUPER_ADMIN'] },
+  { path: '/bookings',   label: 'Bookings',   icon: FiCalendar,   roles: ['DRIVER'] },
   { path: '/trips',      label: 'Trip Planner', icon: FiNavigation, roles: ['DRIVER'] },
   { path: '/dashboard',  label: 'Dashboard',  icon: FiGrid,       roles: ['DRIVER', 'STATION_OWNER', 'SUPER_ADMIN'] },
   { path: '/admin',      label: 'Admin',      icon: FiUsers,      roles: ['SUPER_ADMIN'] },

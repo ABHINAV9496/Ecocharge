@@ -2,15 +2,14 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, LayersControl, Polyline } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
+
 import L from 'leaflet'
 import { FiSearch, FiCrosshair, FiBatteryCharging, FiRefreshCw, FiNavigation, FiArrowRight, FiX, FiClock, FiDollarSign, FiZap, FiInfo, FiFilter, FiMap } from 'react-icons/fi'
 import { getStations } from '../../api/stations'
 import { searchLocations } from '../../api/geocode'
-import { useWebSocket } from '../../context/WebSocketContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { useVehicle } from '../../context/VehicleContext'
-import StationSidebar from './StationSidebar'
 import 'leaflet/dist/leaflet.css'
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -74,7 +73,6 @@ export default function MapView({ routePlan }) {
   var { vehicle } = useVehicle()
   var navigate = useNavigate()
   var [stations, setStations] = useState([])
-  var [selectedStation, setSelectedStation] = useState(null)
   var [userLocation, setUserLocation] = useState([20.5937, 78.9629])
   var [locationQuery, setLocationQuery] = useState('')
   var [isLoading, setIsLoading] = useState(true)
@@ -91,7 +89,6 @@ export default function MapView({ routePlan }) {
   var searchTimer = useRef(null)
   var filterRef = useRef(null)
   var userMenuRef = useRef(null)
-  var { statuses: liveStatuses } = useWebSocket()
   var { user, logoutUser } = useAuth()
   var mapRef = useRef(null)
   var showToast = useToast()
@@ -137,8 +134,6 @@ export default function MapView({ routePlan }) {
     }
     document.addEventListener('mousedown', handleClick); return function () { document.removeEventListener('mousedown', handleClick) }
   }, [])
-
-  function handleBookingSuccess(message) { showToast(message, 'success'); loadStations() }
 
   function findMyLocation() {
     if (navigator.geolocation) { navigator.geolocation.getCurrentPosition(function (position) { var loc = [position.coords.latitude, position.coords.longitude]; setUserLocation(loc); loadStations(); if (mapRef.current) mapRef.current.flyTo(loc, 13) }) }
@@ -308,10 +303,9 @@ export default function MapView({ routePlan }) {
             var lat = station.latitude, lng = station.longitude; if (!lat || !lng) return null
             var rawStatus = (station.status || '').toUpperCase()
             var mStatus = rawStatus === 'ACTIVE' || rawStatus === 'AVAILABLE' ? 'ACTIVE' : rawStatus === 'MAINTENANCE' ? 'MAINTENANCE' : 'INACTIVE'
-            var isSelected = selectedStation && selectedStation.id === station.id
-            return <Marker key={station.id} position={[lat, lng]} icon={createStationIcon(mStatus, isSelected)}>
-              <Popup><div className="min-w-[200px]"><div className="flex items-center gap-2 mb-1.5"><div className={'w-2 h-2 rounded-full shrink-0 ' + (mStatus === 'ACTIVE' ? 'bg-emerald-500' : mStatus === 'MAINTENANCE' ? 'bg-amber-500' : 'bg-gray-400')} /><h3 className="font-semibold text-sm">{station.name}</h3></div><p className="text-xs text-gray-500 mb-2 truncate">{station.address}</p><div className="flex items-center gap-2 text-xs mb-3"><span className={'px-2 py-0.5 rounded-full font-medium ' + (mStatus === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200')}>{mStatus === 'ACTIVE' ? 'Active' : mStatus === 'MAINTENANCE' ? 'Maintenance' : 'Offline'}</span></div><button onClick={function () { setSelectedStation(station) }} className="w-full py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-medium rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-md">View Details</button></div></Popup>
-              </Marker>
+            return <Marker key={station.id} position={[lat, lng]} icon={createStationIcon(mStatus, false)}>
+              <Popup><div className="min-w-[180px]"><div className="flex items-center gap-2 mb-1.5"><div className={'w-2 h-2 rounded-full shrink-0 ' + (mStatus === 'ACTIVE' ? 'bg-emerald-500' : mStatus === 'MAINTENANCE' ? 'bg-amber-500' : 'bg-gray-400')} /><h3 className="font-semibold text-sm">{station.name}</h3></div><p className="text-xs text-gray-500 mb-2">{station.address}</p><button onClick={function () { navigate('/stations/' + station.id) }} className="w-full py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-medium rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-md">View Details</button></div></Popup>
+            </Marker>
           })}
         </MarkerClusterGroup>
       </MapContainer>
@@ -330,12 +324,6 @@ export default function MapView({ routePlan }) {
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /> Maint</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-500" /> Off</span>
           </div>
-        </div>
-      )}
-
-      {selectedStation && (
-        <div className="absolute top-0 right-0 h-full z-50">
-          <StationSidebar station={selectedStation} onClose={function () { setSelectedStation(null) }} onBookSuccess={handleBookingSuccess} statuses={liveStatuses} user={user} />
         </div>
       )}
 
