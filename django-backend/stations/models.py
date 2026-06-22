@@ -8,6 +8,11 @@ class ChargingStation(models.Model):
         INACTIVE = 'INACTIVE', 'Inactive'
         MAINTENANCE = 'MAINTENANCE', 'Maintenance'
 
+    class Source(models.TextChoices):
+        OCM = 'OCM', 'Open Charge Map'
+        ECOCHARGE = 'ECOCHARGE', 'EcoCharge Registered'
+        KAGGLE = 'KAGGLE', 'Kaggle / HuggingFace Imported'
+
     name = models.CharField(max_length=200)
     owner = models.ForeignKey(
         'users.CustomUser', on_delete=models.CASCADE, related_name='stations'
@@ -16,6 +21,8 @@ class ChargingStation(models.Model):
     address = models.TextField()
     amenities = models.JSONField(default=list)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    source = models.CharField(max_length=20, choices=Source.choices, default=Source.ECOCHARGE)
+    ocm_id = models.IntegerField(null=True, blank=True, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

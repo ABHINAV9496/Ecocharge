@@ -20,7 +20,7 @@ class ChargingStationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'owner_username', 'address',
             'latitude', 'longitude', 'amenities',
-            'status', 'created_at', 'slots'
+            'status', 'source', 'ocm_id', 'created_at', 'slots'
         ]
         read_only_fields = ['id', 'created_at', 'owner_username']
 
