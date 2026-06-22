@@ -208,6 +208,9 @@ SPECTACULAR_SETTINGS = {
 # Google OAuth — set your Client ID here for production
 GOOGLE_CLIENT_ID = env('GOOGLE_CLIENT_ID', default='')
 
+# Open Charge Map API
+OCM_API_KEY = env('OCM_API_KEY', default='')
+
 # Email / SMTP — set these in .env for welcome emails
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = env('EMAIL_HOST', default='')
