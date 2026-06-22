@@ -48,6 +48,7 @@ OSRM_TABLE_TIMEOUT = 20
 OSRM_ROUTE_TIMEOUT = 30
 OSRM_MAX_COORDS = 100
 DEFAULT_RATE_PER_KWH = 10.0
+TIME_COST_PER_HOUR = 300
 
 
 @dataclass
@@ -255,18 +256,17 @@ class EnergyAwareRoutePlanner:
         return best_i, cum_km[best_i]
 
     def _calc_charge(self, arrival_kwh, km_after, power, rate):
-        next_max = min(km_after, 250)
-        need_range = next_max + 30
+        max_charge_kwh = self._usable_kwh * 0.9 - arrival_kwh
+        if max_charge_kwh <= 1.0:
+            return 0, 0, 0, arrival_kwh
+        next_leg_target = min(km_after, 200)
+        need_range = next_leg_target + 20
         need_kwh = (need_range / 1000) * self.consumption_wh_per_km
         need_kwh = max(0, need_kwh - arrival_kwh)
-        arrival_soc = (arrival_kwh / self._usable_kwh) * 100 if self._usable_kwh > 0 else 0
-        min_charge_kwh = self._usable_kwh * 0.10
-        charge_kwh = max(min_charge_kwh, need_kwh)
-        max_charge_kwh = self._usable_kwh * 0.9 - arrival_kwh
-        charge_kwh = min(charge_kwh, max_charge_kwh)
+        charge_kwh = min(need_kwh, max_charge_kwh)
         charge_kwh = max(0, charge_kwh)
-        if charge_kwh <= 0 or arrival_soc > 85:
-            charge_kwh = 0
+        if charge_kwh < 1.0:
+            return 0, 0, 0, arrival_kwh
         dep_kwh = arrival_kwh + charge_kwh
         charge_s = (charge_kwh / power * 3600) if power > 0 else 1800
         cost = charge_kwh * rate
@@ -340,7 +340,13 @@ class EnergyAwareRoutePlanner:
             avg_seg_km = total_km / max(1, n - 1)
             window_fwd = max(int(look_km * 2 / avg_seg_km), int(search_radius * 5 / avg_seg_km), 100) if avg_seg_km > 0 else 5000
             window_bwd = max(int(search_radius / avg_seg_km), 10) if avg_seg_km > 0 else 50
-            search_start = max(0, target_idx - window_bwd)
+            min_advance = max(50, range_left * 0.55)
+            min_ahead_cum = cum_km[last_stop_idx] + min_advance
+            search_start = last_stop_idx
+            for i in range(last_stop_idx, n):
+                if cum_km[i] >= min_ahead_cum:
+                    search_start = i
+                    break
             search_end = min(n, target_idx + window_fwd)
             search_coords = route_coords[search_start:search_end]
 
@@ -388,38 +394,63 @@ class EnergyAwareRoutePlanner:
                         break
                 if not expanded:
                     _search_fail_count += 1
-                    if _search_fail_count >= 10:
+                    if search_end >= n - 1 or _search_fail_count > 50:
                         waypoints.append((dest_lat, dest_lng))
                         break
                     target_idx = min(n - 2, target_idx + int(30 / avg_seg_km)) if avg_seg_km > 0 else target_idx + 500
                     window_fwd = min(n - search_start - 1, int(window_fwd * 1.5))
                     continue
 
-            if len(candidates) > OSRM_MAX_COORDS - 1:
-                candidates = candidates[:OSRM_MAX_COORDS - 1]
+            # Compute projected route distance for all candidates
+            cand_data = []
+            for c in candidates:
+                st = c[0]
+                st_lat = float(st['latitude'])
+                st_lng = float(st['longitude'])
+                _, stop_cum = self._project_to_route(st_lat, st_lng, route_coords, cum_km)
+                route_dist_km = max(0.1, stop_cum - last_stop_cum)
+                cand_data.append((c, stop_cum, route_dist_km))
 
-            # Get OSRM road distances for scoring
-            road_data = self._osrm_table(current_lat, current_lng, [c[0] for c in candidates])
+            # Keep only stations ahead of the vehicle
+            cand_data = [x for x in cand_data if x[1] > last_stop_cum]
 
-            # Score candidates
+            # Sort by route distance (nearest along route first)
+            cand_data.sort(key=lambda x: x[1])
+
+            # OSRM table is limited to 100 coords (1 source + 99 destinations)
+            osrm_limit = OSRM_MAX_COORDS - 1
+            osrm_candidates = [x[0] for x in cand_data[:osrm_limit]]
+
+            road_data = self._osrm_table(current_lat, current_lng, [c[0] for c in osrm_candidates])
+
+            # Build lookup: station_id -> (road_dist_m, drive_time_s)
+            road_lookup = {}
+            if road_data:
+                for i, c in enumerate(osrm_candidates):
+                    if i < len(road_data) and road_data[i] is not None:
+                        road_lookup[c[0]['id']] = road_data[i]
+
+            # Score ALL candidates
             scored = []
-            for i, (st, slot, detour, power, rate) in enumerate(candidates):
+            for c_tuple, stop_cum, route_dist_km in cand_data:
+                st, slot, detour, power, rate = c_tuple
                 st_lat = float(st['latitude'])
                 st_lng = float(st['longitude'])
 
-                # Battery check uses route-projected distance
-                _, stop_cum = self._project_to_route(st_lat, st_lng, route_coords, cum_km)
-                route_dist_km = max(0.1, stop_cum - last_stop_cum)
                 arrival_kwh = remaining_kwh - self._segment_energy_kwh(route_dist_km)
 
-                if road_data and i < len(road_data) and road_data[i] is not None:
-                    road_dist_m, drive_time_s = road_data[i]
+                if st['id'] in road_lookup:
+                    road_dist_m, drive_time_s = road_lookup[st['id']]
                     road_dist_km = road_dist_m / 1000.0
                 else:
                     road_dist_km = route_dist_km
                     drive_time_s = (route_dist_km / AVG_SPEED_KMPH) * 3600
 
-                if arrival_kwh < safety_buffer * self._usable_kwh:
+                if arrival_kwh <= 0:
+                    continue
+
+                # Skip stations behind the search window or too close
+                if stop_cum < min_ahead_cum:
                     continue
 
                 arrival_soc = self._soc_from_kwh(arrival_kwh)
@@ -428,12 +459,18 @@ class EnergyAwareRoutePlanner:
                     arrival_kwh, hav_st_to_dest, power, rate
                 )
 
+                if charge_kwh <= 0:
+                    continue
+
                 if self.mode == 'fast':
                     score = -(drive_time_s + charge_s)
                 else:
                     drive_cost = road_dist_km * (self.consumption_wh_per_km / 1000.0) * DEFAULT_RATE_PER_KWH
                     charge_cost = cost_stop
-                    score = -(drive_cost + charge_cost)
+                    charge_time_cost = charge_s / 3600 * TIME_COST_PER_HOUR
+                    slot_type = slot.get('slot_type', '')
+                    ac_penalty = 500 if slot_type == 'AC_SLOW' else (200 if slot_type == 'AC_FAST' else 0)
+                    score = -(drive_cost + charge_cost + charge_time_cost + ac_penalty)
 
                 scored.append({
                     'score': score,
@@ -457,7 +494,7 @@ class EnergyAwareRoutePlanner:
 
             if not scored:
                 _search_fail_count += 1
-                if _search_fail_count >= 10:
+                if search_end >= n - 1 or _search_fail_count > 50:
                     waypoints.append((dest_lat, dest_lng))
                     break
                 target_idx = min(n - 2, target_idx + int(30 / avg_seg_km)) if avg_seg_km > 0 else target_idx + 500
@@ -602,10 +639,9 @@ class EnergyAwareRoutePlanner:
             waypoint_geometry = wg
 
         note = ''
-        if _search_fail_count > 0 and not stops:
-            note = 'Insufficient range and no suitable charging stations found on route.'
-        elif _search_fail_count > 0 and stops:
-            note = 'Some segments may not have optimal station coverage.'
+        if _search_fail_count > 0 and stops:
+            last_stop_km = max(s.distance_from_start_km for s in stops) if stops else 0
+            note = f'Charging stations are sparse after {last_stop_km:.0f} km. Some segments may require careful range planning.'
 
         return RoutePlan(
             total_distance_km=round(max(sum(l.distance_km for l in legs), total_km), 1),
