@@ -15,14 +15,6 @@ services:
     ports:
       - "6379:6379"
 
-  mosquitto:
-    image: eclipse-mosquitto:2
-    ports:
-      - "1883:1883"
-      - "9001:9001"
-    volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
-
   django:
     build: ./django-backend
     command: sh -c "python manage.py collectstatic --noinput && daphne -b 0.0.0.0 -p 8000 core.asgi:application"
@@ -65,33 +57,6 @@ services:
       - postgres
       - redis
       - django
-
-  mqtt_consumer:
-    build: ./django-backend
-    command: sh -c "PYTHONPATH=/app python stations/mqtt_consumer.py"
-    working_dir: /app
-    environment:
-      - PYTHONPATH=/app
-    volumes:
-      - ./django-backend:/app
-    env_file: .env
-    depends_on:
-      - postgres
-      - redis
-      - mosquitto
-      - django
-
-  mqtt_publisher:
-    build: ./django-backend
-    command: sh -c "PYTHONPATH=/app python stations/mqtt_publisher.py"
-    working_dir: /app
-    environment:
-      - PYTHONPATH=/app
-    volumes:
-      - ./django-backend:/app
-    env_file: .env
-    depends_on:
-      - mosquitto
 
 volumes:
   postgres_data:
