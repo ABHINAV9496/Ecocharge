@@ -152,7 +152,7 @@ export default function MapView({ routePlan }) {
     var data = await searchLocations(query, 5); setSearchSuggestions(data); setShowSearchSuggestions(data.length > 0)
   }
 
-  function handleLocationInput(value) { setLocationQuery(value); if (searchTimer.current) clearTimeout(searchTimer.current); searchTimer.current = setTimeout(function () { geocodeSearch(value) }, 100) }
+  function handleLocationInput(value) { setLocationQuery(value); if (searchTimer.current) clearTimeout(searchTimer.current); searchTimer.current = setTimeout(function () { geocodeSearch(value) }, 400) }
 
   function selectSearchSuggestion(s) { setLocationQuery(s.display_name); setShowSearchSuggestions(false); var lat = parseFloat(s.lat), lng = parseFloat(s.lon); setUserLocation([lat, lng]); loadStations(); if (mapRef.current) mapRef.current.flyTo([lat, lng], 12) }
   function handleLocationKeyDown(e) { if (e.key === 'Enter') searchLocation() }

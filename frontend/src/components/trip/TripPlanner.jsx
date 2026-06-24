@@ -8,6 +8,7 @@ import { useVehicle } from '../../context/VehicleContext'
 import { searchLocations } from '../../api/geocode'
 import { formatCurrency } from '../../utils/formatters'
 import VehicleSelector from '../map/VehicleSelector'
+import BatteryChart from './BatteryChart'
 
 var OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
 
@@ -27,8 +28,9 @@ export default function TripPlanner() {
   var [originCoords, setOriginCoords] = useState(null)
   var [destCoords, setDestCoords] = useState(null)
   var [batteryPercent, setBatteryPercent] = useState(80)
-  var [mode, setMode] = useState('optimised')
   var [route, setRoute] = useState(null)
+  var [selectedAlt, setSelectedAlt] = useState(0)
+  var [alternatives, setAlternatives] = useState([])
   var [isLoading, setIsLoading] = useState(false)
   var [error, setError] = useState('')
   var [saving, setSaving] = useState(false)
@@ -58,13 +60,13 @@ export default function TripPlanner() {
   function handleOriginInput(v) {
     setOrigin(v); setOriginCoords(null)
     if (originTimer.current) clearTimeout(originTimer.current)
-    originTimer.current = setTimeout(function () { geocode(v, 'origin') }, 100)
+    originTimer.current = setTimeout(function () { geocode(v, 'origin') }, 400)
   }
 
   function handleDestInput(v) {
     setDestination(v); setDestCoords(null)
     if (destTimer.current) clearTimeout(destTimer.current)
-    destTimer.current = setTimeout(function () { geocode(v, 'destination') }, 100)
+    destTimer.current = setTimeout(function () { geocode(v, 'destination') }, 400)
   }
 
   function selectOrigin(s) {
@@ -110,11 +112,12 @@ export default function TripPlanner() {
         battery_start_percent: batteryPercent,
         origin_name: origin,
         dest_name: destination,
-        mode: mode,
       })
 
       var backendPlan = planResult.data
 
+      setAlternatives(backendPlan.alternatives || [])
+      setSelectedAlt(0)
       setRoute({
         route: coordinates,
         distance: distanceM,
@@ -125,6 +128,7 @@ export default function TripPlanner() {
         originName: origin,
         destName: destination,
         stops: backendPlan.stops || [],
+        batteryProfile: backendPlan.battery_profile || [],
       })
     } catch (e) { console.error(e); setError('Route planning failed. Please try again.') }
     setIsLoading(false)
@@ -149,14 +153,35 @@ export default function TripPlanner() {
         battery_start_percent: batteryValue,
         origin_name: route.originName,
         dest_name: route.destName,
-        mode: mode,
       })
       var backendPlan = planResult.data
+      setAlternatives(backendPlan.alternatives || [])
+      setSelectedAlt(0)
       setRoute(Object.assign({}, route, {
         backendPlan: backendPlan,
         stops: backendPlan.stops || [],
+        batteryProfile: backendPlan.battery_profile || [],
       }))
     } catch (e) { console.error('Replan error:', e) }
+  }
+
+  function handleSelectAlt(index) {
+    setSelectedAlt(index)
+    if (index === 0 || !route) return
+    var alt = alternatives[index - 1]
+    if (!alt) return
+    setRoute(Object.assign({}, route, {
+      backendPlan: Object.assign({}, route.backendPlan, {
+        total_charge_time_seconds: alt.total_charge_time_seconds,
+        total_cost: alt.total_cost,
+        total_energy_consumed_kwh: alt.total_energy_consumed_kwh,
+        final_soc_percent: alt.final_soc_percent,
+        stops: alt.stops || [],
+        legs: alt.legs || [],
+      }),
+      stops: alt.stops || [],
+      batteryProfile: alt.battery_profile || route.batteryProfile,
+    }))
   }
 
   async function handleSaveTrip() {
@@ -330,22 +355,6 @@ export default function TripPlanner() {
             <div className="flex justify-between text-[10px] text-gray-400 mt-0.5"><span>10%</span><span>100%</span></div>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Route Mode</label>
-            <div className="flex gap-2">
-              <button onClick={function () { setMode('fast') }}
-                className={'flex-1 py-2 text-xs font-medium rounded-xl transition-all border ' + (mode === 'fast' ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-emerald-300')}>
-                <span className="block font-bold">Fast</span>
-                <span className="block text-[10px] opacity-70">Minimize time</span>
-              </button>
-              <button onClick={function () { setMode('optimised') }}
-                className={'flex-1 py-2 text-xs font-medium rounded-xl transition-all border ' + (mode === 'optimised' ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400' : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-emerald-300')}>
-                <span className="block font-bold">Optimised</span>
-                <span className="block text-[10px] opacity-70">Minimize cost</span>
-              </button>
-            </div>
-          </div>
-
           <button onClick={handlePlanRoute} disabled={isLoading || !originCoords || !destCoords}
             className={'w-full py-2.5 text-sm font-medium rounded-xl transition-all flex items-center justify-center gap-2 ' + (isLoading || !originCoords || !destCoords ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-600 hover:to-emerald-700')}>
             {isLoading ? <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> Planning...</> : <><FiSearch className="w-4 h-4" /> Plan Trip</>}
@@ -354,8 +363,35 @@ export default function TripPlanner() {
           {error && <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-xl">{error}</div>}
         </div>
 
-        {route && (
+        {route && alternatives.length > 0 && (
           <div className="pt-4 border-t border-gray-200 dark:border-gray-800 space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Route Options</h3>
+            <div className="flex gap-2">
+              { ([
+                { label: 'Fastest', strategy: 'fastest_time', data: {
+                  total_drive_time_seconds: route.duration,
+                  total_charge_time_seconds: bp ? bp.total_charge_time_seconds : 0,
+                  total_cost: bp ? bp.total_cost : 0,
+                  stop_count: stopCount,
+                }},
+              ]).concat(alternatives.map(function (a) { return { label: a.label, strategy: a.strategy, data: a } })).map(function (opt, i) {
+                var total = opt.data.total_drive_time_seconds + opt.data.total_charge_time_seconds
+                return (
+                  <button key={i} onClick={function () { handleSelectAlt(i) }}
+                    className={'flex-1 p-2 text-xs rounded-xl transition-all border text-left ' + (selectedAlt === i ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-emerald-300')}>
+                    <span className={'block font-bold mb-0.5 ' + (selectedAlt === i ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-700 dark:text-gray-300')}>{opt.label}</span>
+                    <span className="block text-gray-400">{formatDuration(total)}</span>
+                    <span className="block text-gray-400">{opt.data.stop_count} stop{opt.data.stop_count !== 1 ? 's' : ''}</span>
+                    <span className="block text-gray-400">{formatCurrency(opt.data.total_cost)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {route && (
+          <div className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Route Summary</h3>
             <div className="space-y-2 bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
               <div className="flex items-center justify-between text-sm">
@@ -387,6 +423,8 @@ export default function TripPlanner() {
                 </div>
               )}
             </div>
+
+            <BatteryChart batteryProfile={route.batteryProfile || bp.battery_profile} stops={bp ? bp.stops : []} />
 
             {stopCount > 0 && bp.stops.map(function (stop, i) {
               var roadInfo = stop.road_distance_km && stop.road_distance_km > 0
