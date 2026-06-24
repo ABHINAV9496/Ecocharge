@@ -31,7 +31,6 @@ class TripPlanRequestSerializer(serializers.Serializer):
     battery_start_percent = serializers.FloatField(min_value=0, max_value=100)
     origin_name = serializers.CharField(required=False, default='Origin')
     dest_name = serializers.CharField(required=False, default='Destination')
-    mode = serializers.ChoiceField(choices=['fast', 'optimised'], default='optimised')
 
 
 class TripPlanStopSerializer(serializers.Serializer):
@@ -65,6 +64,26 @@ class TripPlanLegSerializer(serializers.Serializer):
     end_soc_percent = serializers.FloatField()
 
 
+class RoutePlanAlternativeSerializer(serializers.Serializer):
+    label = serializers.CharField()
+    strategy = serializers.CharField()
+    total_drive_time_seconds = serializers.FloatField()
+    total_charge_time_seconds = serializers.FloatField()
+    total_cost = serializers.FloatField()
+    stop_count = serializers.IntegerField()
+    final_soc_percent = serializers.FloatField()
+    total_distance_km = serializers.FloatField()
+    total_energy_consumed_kwh = serializers.FloatField(required=False, default=0)
+    stops = TripPlanStopSerializer(many=True, required=False, default=list)
+    legs = TripPlanLegSerializer(many=True, required=False, default=list)
+    battery_profile = BatteryProfilePointSerializer(many=True, required=False, default=list)
+
+
+class BatteryProfilePointSerializer(serializers.Serializer):
+    dist_km = serializers.FloatField()
+    soc_percent = serializers.FloatField()
+
+
 class TripPlanResponseSerializer(serializers.Serializer):
     total_distance_km = serializers.FloatField()
     total_drive_time_seconds = serializers.FloatField()
@@ -77,4 +96,7 @@ class TripPlanResponseSerializer(serializers.Serializer):
     origin_name = serializers.CharField()
     dest_name = serializers.CharField()
     note = serializers.CharField(required=False, default='')
+    strategy = serializers.CharField(required=False, default='fastest_time')
     waypoint_geometry = serializers.ListField(child=serializers.ListField(child=serializers.FloatField()), required=False, default=list)
+    alternatives = RoutePlanAlternativeSerializer(many=True, required=False, default=list)
+    battery_profile = BatteryProfilePointSerializer(many=True, required=False, default=list)

@@ -91,16 +91,18 @@ class TripPlanView(APIView):
             consumption_wh_per_km=vehicle.consumption_wh_per_km,
             battery_kwh=vehicle.battery_kwh,
             battery_start_percent=data['battery_start_percent'],
-            mode=data.get('mode', 'optimised'),
         )
 
-        plan = planner.plan_route(
+        result = planner.plan_routes(
             route_coords=route_coords,
             total_distance_m=data['total_distance_m'],
             stations=stations_data,
             origin_name=data.get('origin_name', 'Origin'),
             dest_name=data.get('dest_name', 'Destination'),
         )
+
+        plan = result['selected']
+        plan.alternatives = result['alternatives']
 
         response_serializer = TripPlanResponseSerializer(plan)
         return Response(response_serializer.data, status=status.HTTP_200_OK)
