@@ -52,8 +52,9 @@ export default function BatteryChart({ batteryProfile, stops }) {
           <YAxis
             tick={{ fontSize: 10, fill: '#9ca3af' }}
             tickFormatter={function (v) { return v + '%' }}
-            domain={[0, maxSoc]}
+            domain={[0, (dataMax) => Math.max(100, Math.ceil(dataMax / 10) * 10)]}
             type="number"
+            allowDataOverflow={true}
           />
           <Tooltip content={<CustomTooltip />} />
           <ReferenceLine y={15} stroke="#ef4444" strokeDasharray="4 4" strokeOpacity={0.6} label={{ value: 'Safety', position: 'insideBottomRight', fontSize: 9, fill: '#ef4444' }} />

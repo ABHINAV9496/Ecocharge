@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiSearch, FiMapPin, FiBatteryCharging, FiNavigation, FiDollarSign, FiClock, FiSave, FiZap, FiMap } from 'react-icons/fi'
+import { FiSearch, FiMapPin, FiBatteryCharging, FiNavigation, FiDollarSign, FiClock, FiSave, FiZap, FiMap, FiBattery } from 'react-icons/fi'
 import { createTrip } from '../../api/trips'
 import { planRoute } from '../../api/routePlanner'
 import { useAuth } from '../../context/AuthContext'
@@ -8,7 +8,7 @@ import { useVehicle } from '../../context/VehicleContext'
 import { searchLocations } from '../../api/geocode'
 import { formatCurrency } from '../../utils/formatters'
 import VehicleSelector from '../map/VehicleSelector'
-import BatteryChart from './BatteryChart'
+import TripTimeline from './TripTimeline'
 
 var OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
 
@@ -103,6 +103,7 @@ export default function TripPlanner() {
 
       var distanceM = osrmRoute.distance
       var durationS = osrmRoute.duration
+      console.log('OSRM raw: distance_m=' + distanceM + ' duration_s=' + durationS + ' km=' + (distanceM / 1000).toFixed(1))
 
       var planResult = await planRoute({
         route_coords: coordinates,
@@ -123,12 +124,12 @@ export default function TripPlanner() {
         distance: distanceM,
         duration: durationS,
         backendPlan: backendPlan,
+        originalPlan: Object.assign({}, backendPlan),
         origin: originCoords,
         destination: destCoords,
         originName: origin,
         destName: destination,
         stops: backendPlan.stops || [],
-        batteryProfile: backendPlan.battery_profile || [],
       })
     } catch (e) { console.error(e); setError('Route planning failed. Please try again.') }
     setIsLoading(false)
@@ -159,19 +160,29 @@ export default function TripPlanner() {
       setSelectedAlt(0)
       setRoute(Object.assign({}, route, {
         backendPlan: backendPlan,
+        originalPlan: Object.assign({}, backendPlan),
         stops: backendPlan.stops || [],
-        batteryProfile: backendPlan.battery_profile || [],
       }))
     } catch (e) { console.error('Replan error:', e) }
   }
 
   function handleSelectAlt(index) {
     setSelectedAlt(index)
-    if (index === 0 || !route) return
+    if (index === 0) {
+      if (route && route.originalPlan) {
+        setRoute(Object.assign({}, route, {
+          backendPlan: route.originalPlan,
+          stops: route.originalPlan.stops || [],
+        }))
+      }
+      return
+    }
+    if (!route) return
     var alt = alternatives[index - 1]
     if (!alt) return
     setRoute(Object.assign({}, route, {
       backendPlan: Object.assign({}, route.backendPlan, {
+        total_drive_time_seconds: alt.total_drive_time_seconds,
         total_charge_time_seconds: alt.total_charge_time_seconds,
         total_cost: alt.total_cost,
         total_energy_consumed_kwh: alt.total_energy_consumed_kwh,
@@ -180,7 +191,6 @@ export default function TripPlanner() {
         legs: alt.legs || [],
       }),
       stops: alt.stops || [],
-      batteryProfile: alt.battery_profile || route.batteryProfile,
     }))
   }
 
@@ -299,6 +309,31 @@ export default function TripPlanner() {
   var arrivalPercent = bp ? bp.final_soc_percent : 0
   var batteryColorClass = arrivalPercent > 20 ? 'text-emerald-500' : 'text-red-500'
 
+  // === Calculation Validation ===
+  var validationWarnings = []
+  if (bp && stopCount > 0) {
+    if (!bp.total_charge_time_seconds || bp.total_charge_time_seconds <= 0) {
+      validationWarnings.push('Charging time is zero despite having ' + stopCount + ' stop(s)')
+    }
+    if (!bp.total_cost || bp.total_cost <= 0) {
+      validationWarnings.push('Charging cost is zero for a multi-stop trip')
+    }
+  }
+  if (bp && bp.total_charge_time_seconds > 0 && stopCount === 0) {
+    validationWarnings.push('Charging time is positive but no charging stops defined')
+  }
+  if (alternatives && alternatives.length >= 1) {
+    var fData = selectedAlt === 0 ? bp : (route ? route.originalPlan : null)
+    var cData = alternatives[0]
+    if (fData && cData) {
+      var fTotal = (fData.total_drive_time_seconds || 0) + (fData.total_charge_time_seconds || 0)
+      var cTotal = (cData.total_drive_time_seconds || 0) + (cData.total_charge_time_seconds || 0)
+      if (cTotal > 0 && fTotal > cTotal + 1800) {
+        validationWarnings.push('Fastest is slower than Cheapest — unexpected ordering')
+      }
+    }
+  }
+
   return (
     <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-5">
         <div className="flex items-center gap-2.5">
@@ -363,84 +398,159 @@ export default function TripPlanner() {
           {error && <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-xl">{error}</div>}
         </div>
 
-        {route && alternatives.length > 0 && (
+        {route && (
           <div className="pt-4 border-t border-gray-200 dark:border-gray-800 space-y-3">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Route Options</h3>
-            <div className="flex gap-2">
-              { ([
-                { label: 'Fastest', strategy: 'fastest_time', data: {
-                  total_drive_time_seconds: route.duration,
-                  total_charge_time_seconds: bp ? bp.total_charge_time_seconds : 0,
-                  total_cost: bp ? bp.total_cost : 0,
-                  stop_count: stopCount,
-                }},
-              ]).concat(alternatives.map(function (a) { return { label: a.label, strategy: a.strategy, data: a } })).map(function (opt, i) {
-                var total = opt.data.total_drive_time_seconds + opt.data.total_charge_time_seconds
-                return (
-                  <button key={i} onClick={function () { handleSelectAlt(i) }}
-                    className={'flex-1 p-2 text-xs rounded-xl transition-all border text-left ' + (selectedAlt === i ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-emerald-300')}>
-                    <span className={'block font-bold mb-0.5 ' + (selectedAlt === i ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-700 dark:text-gray-300')}>{opt.label}</span>
-                    <span className="block text-gray-400">{formatDuration(total)}</span>
-                    <span className="block text-gray-400">{opt.data.stop_count} stop{opt.data.stop_count !== 1 ? 's' : ''}</span>
-                    <span className="block text-gray-400">{formatCurrency(opt.data.total_cost)}</span>
-                  </button>
-                )
-              })}
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Route Options</h3>
             </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              { (function () {
+                var cards = []
+                var fastestPlan = selectedAlt === 0 ? bp : (route ? route.originalPlan : null)
+                var cheapestPlan = alternatives[0]
+                var fastestCost = fastestPlan ? fastestPlan.total_cost : 0
+
+                var planDefs = [
+                  { idx: 0, label: '\u26A1 Fastest', color: 'emerald', desc: 'Premium DC chargers for minimum travel time', data: fastestPlan },
+                  { idx: 1, label: '\uD83D\uDCB0 Cheapest', color: 'amber', desc: 'Lowest-cost chargers to minimize expenses', data: cheapestPlan },
+                ]
+
+                for (var ci = 0; ci < planDefs.length; ci++) {
+                  let pd = planDefs[ci]
+                  var d = pd.data || {}
+                  var totalTime = (d.total_drive_time_seconds || 0) + (d.total_charge_time_seconds || 0)
+                  if (pd.idx === 0 && !totalTime) { totalTime = route.duration + (bp ? bp.total_charge_time_seconds : 0) }
+                  var isSelected = selectedAlt === pd.idx
+                  var stopCt = d.stops ? d.stops.length : 0
+                  if (pd.idx === 0 && bp) stopCt = bp.stops.length
+                  var cost = pd.idx === 0 ? (bp ? bp.total_cost : 0) : (d.total_cost || 0)
+                  var savings = Math.max(0, (fastestCost || 0) - cost)
+                  var savingsFormatted = savings > 0.5 ? '\u20B9' + Math.round(savings).toLocaleString('en-IN') : null
+
+                  cards.push(
+                    <button key={ci} onClick={function () { handleSelectAlt(pd.idx) }}
+                      className={'relative flex-1 p-3 rounded-xl transition-all duration-300 text-left ' + (isSelected
+                        ? 'bg-white dark:bg-gray-800 border-2 border-' + pd.color + '-400 dark:border-' + pd.color + '-500 shadow-lg shadow-' + pd.color + '-200/50 dark:shadow-' + pd.color + '-900/20 scale-[1.02] z-10'
+                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-' + pd.color + '-300 shadow-sm hover:shadow-md')}>
+                      {isSelected && <div className="absolute -top-2 -right-2 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/30"><svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>}
+                      <div className={'text-base font-bold tracking-tight ' + (isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-800 dark:text-gray-200')}>{formatDuration(totalTime)}</div>
+                      <div className={'text-[11px] font-semibold mt-0.5 ' + (isSelected ? 'text-' + pd.color + '-600 dark:text-' + pd.color + '-400' : 'text-gray-500 dark:text-gray-400')}>{pd.label}</div>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {pd.idx === 0 && <span className="inline-flex items-center text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">Fastest option</span>}
+                        {pd.idx > 0 && savingsFormatted && <span className={'inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded ' + (isSelected ? 'bg-' + pd.color + '-50 dark:bg-' + pd.color + '-900/20 text-' + pd.color + '-600 dark:text-' + pd.color + '-400' : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400')}>Save {savingsFormatted}</span>}
+                      </div>
+                      <div className="mt-1.5 space-y-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                        <div className="flex items-center gap-1"><FiZap className="w-3 h-3" />{formatDuration(d.total_charge_time_seconds || 0)} charging</div>
+                        <div className="flex items-center gap-1"><FiBatteryCharging className="w-3 h-3" />{stopCt} stop{stopCt !== 1 ? 's' : ''} &middot; {d.final_soc_percent || arrivalPercent}% arrival</div>
+                        <div className="flex items-center gap-1"><FiDollarSign className="w-3 h-3" />{'\u20B9' + Math.round(cost).toLocaleString('en-IN')}</div>
+                      </div>
+                      <div className="mt-1.5 text-[10px] text-gray-400 dark:text-gray-500 italic leading-tight">{pd.desc}</div>
+                    </button>
+                  )
+                }
+                return cards
+              })()}
+            </div>
+          </div>
+        )}
+
+        {route && validationWarnings.length > 0 && (
+          <div className="space-y-1">
+            {validationWarnings.map(function (w, i) {
+              return <div key={i} className="p-2.5 text-xs bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 rounded-xl flex items-start gap-2">
+                <svg className="w-3.5 h-3.5 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                <span>{w}</span>
+              </div>
+            })}
           </div>
         )}
 
         {route && (
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Route Summary</h3>
-            <div className="space-y-2 bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500 dark:text-gray-400">Distance</span>
-                <span className="font-semibold text-gray-900 dark:text-white">{(route.distance / 1000).toFixed(1)} km</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500 dark:text-gray-400">Est. driving time</span>
-                <span className="font-semibold text-gray-900 dark:text-white">{formatDuration(route.duration)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500 dark:text-gray-400">Arrival Battery</span>
-                <span className={'font-semibold ' + batteryColorClass}>{arrivalPercent}%</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500 dark:text-gray-400">Charging stops</span>
-                <span className="font-semibold text-amber-500">{stopCount}</span>
-              </div>
-              {bp && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Est. cost</span>
-                  <span className="font-semibold text-emerald-500">{formatCurrency(bp.total_cost)}</span>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              <div className="col-span-2 md:col-span-3 flex items-center gap-2 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-800/80 rounded-xl p-2.5 border border-gray-100 dark:border-gray-700">
+                <FiClock className="w-4 h-4 text-gray-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">Total Trip Time</div>
+                  <div className="text-sm font-bold text-gray-900 dark:text-white">{formatDuration((bp ? bp.total_drive_time_seconds : 0) + (bp ? bp.total_charge_time_seconds : 0))}</div>
                 </div>
-              )}
-              {bp && bp.total_charge_time_seconds > 0 && (
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Total charge time</span>
-                  <span className="font-semibold text-amber-500">{formatDuration(bp.total_charge_time_seconds)}</span>
+              </div>
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-xl p-2.5">
+                <FiMapPin className="w-4 h-4 text-blue-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">Distance</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white">{(route.distance / 1000).toFixed(1)} km</div>
                 </div>
-              )}
+              </div>
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-xl p-2.5">
+                <FiNavigation className="w-4 h-4 text-violet-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">Drive Time</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white">{formatDuration(bp ? bp.total_drive_time_seconds : route.duration)}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-xl p-2.5">
+                <FiZap className="w-4 h-4 text-amber-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">Charge Time</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white">{formatDuration(bp ? bp.total_charge_time_seconds : 0)}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-xl p-2.5">
+                <FiBatteryCharging className="w-4 h-4 text-emerald-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">Charging Stops</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white">{stopCount}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-xl p-2.5">
+                <FiDollarSign className="w-4 h-4 text-emerald-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">Charging Cost</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white">{'\u20B9' + Math.round(bp ? bp.total_cost : 0).toLocaleString('en-IN')}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-xl p-2.5">
+                <FiBattery className="w-4 h-4 text-blue-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">Arrival Battery</div>
+                  <div className={'text-sm font-semibold ' + batteryColorClass}>{arrivalPercent}%</div>
+                </div>
+              </div>
             </div>
 
-            <BatteryChart batteryProfile={route.batteryProfile || bp.battery_profile} stops={bp ? bp.stops : []} />
+            <TripTimeline
+              originName={route.originName}
+              destName={route.destName}
+              batteryPercent={batteryPercent}
+              stops={bp ? bp.stops : []}
+              legs={bp ? bp.legs : []}
+              finalSoc={arrivalPercent}
+            />
 
             {stopCount > 0 && bp.stops.map(function (stop, i) {
-              var roadInfo = stop.road_distance_km && stop.road_distance_km > 0
-                ? 'Road: ' + stop.road_distance_km.toFixed(1) + ' km' + (stop.road_detour_km ? ' (+' + stop.road_detour_km.toFixed(1) + ' km road)' : '')
-                : stop.distance_from_start_km + ' km from start'
+              var prevDist = i > 0 ? bp.stops[i - 1].distance_from_start_km : 0
+              var legDist = stop.distance_from_start_km - prevDist
+              var chargerLabel = stop.slot_type === 'DC_FAST' ? 'DC Fast' : stop.slot_type === 'DC_ULTRA' ? 'DC Ultra' : stop.slot_type === 'AC_FAST' ? 'AC Fast' : stop.slot_type || 'Charger'
+              var chargerColor = stop.slot_type && stop.slot_type.startsWith('DC') ? 'text-purple-600 dark:text-purple-400' : 'text-amber-600 dark:text-amber-400'
+              var chargerBg = stop.slot_type && stop.slot_type.startsWith('DC') ? 'bg-purple-100 dark:bg-purple-900/20' : 'bg-amber-100 dark:bg-amber-900/20'
               return (
-                <div key={i} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-semibold text-gray-900 dark:text-white">{stop.station_name || 'Stop ' + (i + 1)}</span>
-                    <span className="text-xs text-gray-500">{roadInfo}</span>
+                <div key={i} className="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-[10px] font-bold text-gray-500">{i + 1}</div>
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">{stop.station_name || 'Stop ' + (i + 1)}</span>
+                    </div>
+                    <span className={'text-[10px] font-medium px-1.5 py-0.5 rounded ' + chargerBg + ' ' + chargerColor}>{chargerLabel}</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5 text-xs text-gray-500">
-                    <span className="flex items-center gap-1"><FiBatteryCharging className="w-3 h-3" />Arrive {stop.arrival_soc_percent}%</span>
-                    <span className="flex items-center gap-1"><FiZap className="w-3 h-3" />{stop.charge_kwh} kWh</span>
-                    <span className="flex items-center gap-1"><FiClock className="w-3 h-3" />{formatDuration(stop.charge_time_seconds)}</span>
-                    <span className="flex items-center gap-1"><FiDollarSign className="w-3 h-3" />{formatCurrency(stop.cost)}</span>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                    <span className="flex items-center gap-1"><FiNavigation className="w-3 h-3 text-gray-400" />{legDist.toFixed(1)} km</span>
+                    <span className="flex items-center gap-1"><FiZap className="w-3 h-3 text-gray-400" />{stop.charger_power_kw || '?'} kW</span>
+                    <span className="flex items-center gap-1"><FiBatteryCharging className="w-3 h-3 text-gray-400" />{stop.arrival_soc_percent}% → {stop.departure_soc_percent}%</span>
+                    <span className="flex items-center gap-1"><FiClock className="w-3 h-3 text-gray-400" />{formatDuration(stop.charge_time_seconds)}</span>
+                    <span className="flex items-center gap-1"><FiDollarSign className="w-3 h-3 text-gray-400" />{'\u20B9' + Math.round(stop.cost).toLocaleString('en-IN')}</span>
+                    {stop.distance_from_start_km != null && <span className="flex items-center gap-1"><FiMapPin className="w-3 h-3 text-gray-400" />{stop.distance_from_start_km.toFixed(0)} km total</span>}
                   </div>
                 </div>
               )
