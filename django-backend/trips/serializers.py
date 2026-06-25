@@ -64,11 +64,18 @@ class TripPlanLegSerializer(serializers.Serializer):
     end_soc_percent = serializers.FloatField()
 
 
+class BatteryProfilePointSerializer(serializers.Serializer):
+    dist_km = serializers.FloatField()
+    soc_percent = serializers.FloatField()
+
+
 class RoutePlanAlternativeSerializer(serializers.Serializer):
     label = serializers.CharField()
     strategy = serializers.CharField()
     total_drive_time_seconds = serializers.FloatField()
     total_charge_time_seconds = serializers.FloatField()
+    total_rest_breaks_seconds = serializers.FloatField(required=False, default=0)
+    total_trip_time_seconds = serializers.FloatField(required=False, default=0)
     total_cost = serializers.FloatField()
     stop_count = serializers.IntegerField()
     final_soc_percent = serializers.FloatField()
@@ -79,15 +86,12 @@ class RoutePlanAlternativeSerializer(serializers.Serializer):
     battery_profile = BatteryProfilePointSerializer(many=True, required=False, default=list)
 
 
-class BatteryProfilePointSerializer(serializers.Serializer):
-    dist_km = serializers.FloatField()
-    soc_percent = serializers.FloatField()
-
-
 class TripPlanResponseSerializer(serializers.Serializer):
     total_distance_km = serializers.FloatField()
     total_drive_time_seconds = serializers.FloatField()
     total_charge_time_seconds = serializers.FloatField()
+    total_rest_breaks_seconds = serializers.FloatField(required=False, default=0)
+    total_trip_time_seconds = serializers.FloatField(required=False, default=0)
     total_cost = serializers.FloatField()
     total_energy_consumed_kwh = serializers.FloatField()
     legs = TripPlanLegSerializer(many=True)
