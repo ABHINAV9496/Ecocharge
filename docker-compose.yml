@@ -28,10 +28,10 @@ services:
       - redis
 
   fastapi:
-    build: ./fastapi-service
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    build: ./fastapi-ai
+    command: uvicorn app:app --host 0.0.0.0 --port 8001 --reload
     volumes:
-      - ./fastapi-service:/app
+      - ./fastapi-ai:/app
     ports:
       - "8001:8001"
     env_file: .env
