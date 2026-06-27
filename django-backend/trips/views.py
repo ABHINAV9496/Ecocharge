@@ -16,6 +16,8 @@ from .services.route_planner import EnergyAwareRoutePlanner
 from vehicles.models import VehicleProfile
 from stations.models import ChargingStation
 from users.permissions import IsDriver
+from notifications.helpers import create_notification
+from weather.services import WeatherService, WeatherServiceError
 
 
 def _prepare_route_data(route_coords):
@@ -69,6 +71,16 @@ class TripListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         return Trip.objects.filter(driver=self.request.user).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        trip = serializer.save()
+        create_notification(
+            user=self.request.user,
+            notification_type='TRIP',
+            title='Trip Completed',
+            message=f'Trip from {trip.origin} to {trip.destination} completed — {trip.distance_km:.1f} km',
+            link='/trips',
+        )
 
 
 class TripDetailView(generics.RetrieveDestroyAPIView):
@@ -151,6 +163,26 @@ class TripPlanView(APIView):
         plan = result['selected']
         plan.alternatives = result['alternatives']
 
+        try:
+            origin_coords = route_coords[0]
+            dest_coords = route_coords[-1]
+            plan.origin_weather = WeatherService.get_current_weather(
+                origin_coords[0], origin_coords[1]
+            ) if origin_coords else None
+            plan.destination_weather = WeatherService.get_current_weather(
+                dest_coords[0], dest_coords[1]
+            ) if dest_coords else None
+
+            for stop in plan.stops:
+                stop.weather = WeatherService.get_current_weather(
+                    stop.lat, stop.lng
+                )
+        except WeatherServiceError:
+            plan.origin_weather = None
+            plan.destination_weather = None
+            for stop in plan.stops:
+                stop.weather = None
+
         response_serializer = TripPlanResponseSerializer(plan)
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
@@ -175,6 +207,7 @@ class TripPlanStreamView(APIView):
 
         def event_stream():
             yield json.dumps({'progress': 'Planning route...'}) + '\n'
+            yield json.dumps({'progress': 'Fetching weather data...'}) + '\n'
             result = planner.plan_routes(
                 route_coords=route_coords,
                 total_distance_m=data['total_distance_m'],
@@ -184,6 +217,26 @@ class TripPlanStreamView(APIView):
             )
             plan = result['selected']
             plan.alternatives = result['alternatives']
+
+            try:
+                origin_coords = route_coords[0]
+                dest_coords = route_coords[-1]
+                plan.origin_weather = WeatherService.get_current_weather(
+                    origin_coords[0], origin_coords[1]
+                ) if origin_coords else None
+                plan.destination_weather = WeatherService.get_current_weather(
+                    dest_coords[0], dest_coords[1]
+                ) if dest_coords else None
+                for stop in plan.stops:
+                    stop.weather = WeatherService.get_current_weather(
+                        stop.lat, stop.lng
+                    )
+            except WeatherServiceError:
+                plan.origin_weather = None
+                plan.destination_weather = None
+                for stop in plan.stops:
+                    stop.weather = None
+
             s = TripPlanResponseSerializer(plan)
             yield json.dumps({'result': s.data}) + '\n'
 

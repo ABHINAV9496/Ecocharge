@@ -33,6 +33,14 @@ class TripPlanRequestSerializer(serializers.Serializer):
     dest_name = serializers.CharField(required=False, default='Destination')
 
 
+class WeatherInfoSerializer(serializers.Serializer):
+    temperature = serializers.FloatField(allow_null=True)
+    description = serializers.CharField(allow_null=True)
+    icon = serializers.CharField(allow_null=True)
+    precipitation_probability = serializers.FloatField(allow_null=True)
+    wind_speed = serializers.FloatField(allow_null=True)
+
+
 class TripPlanStopSerializer(serializers.Serializer):
     stop_index = serializers.IntegerField()
     station_id = serializers.IntegerField()
@@ -52,6 +60,7 @@ class TripPlanStopSerializer(serializers.Serializer):
     road_distance_km = serializers.FloatField(default=0)
     road_detour_km = serializers.FloatField(default=0)
     alternatives = serializers.ListField(child=serializers.DictField(), required=False, default=list)
+    weather = WeatherInfoSerializer(required=False, allow_null=True)
 
 
 class TripPlanLegSerializer(serializers.Serializer):
@@ -104,3 +113,5 @@ class TripPlanResponseSerializer(serializers.Serializer):
     waypoint_geometry = serializers.ListField(child=serializers.ListField(child=serializers.FloatField()), required=False, default=list)
     alternatives = RoutePlanAlternativeSerializer(many=True, required=False, default=list)
     battery_profile = BatteryProfilePointSerializer(many=True, required=False, default=list)
+    origin_weather = WeatherInfoSerializer(required=False, allow_null=True)
+    destination_weather = WeatherInfoSerializer(required=False, allow_null=True)

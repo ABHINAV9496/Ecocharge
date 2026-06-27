@@ -516,8 +516,29 @@ class EnergyAwareRoutePlanner:
         _expansion_exhausted = False
         avg_seg_km = total_km / max(1, n - 1) if n > 1 else 1.0
 
+        _dbg = {
+            't_start': time.time(),
+            't_osrm_table': 0.0,
+            't_osrm_route': 0.0,
+            't_filter': 0.0,
+            't_scoring': 0.0,
+            't_segments': 0.0,
+            'calls_min_dist': 0,
+            'calls_project': 0,
+            'stations_loaded': len(stations),
+            'stations_rejected_bbox': 0,
+            'stations_rejected_route': 0,
+            'stations_rejected_slot': 0,
+            'osrm_table_calls': 0,
+            'osrm_table_coords': 0,
+            'expansion_pass': False,
+            'expansion_iterations': 0,
+            'while_iterations': 0,
+        }
+
         _total_iterations = 0
         while True:
+            _dbg['while_iterations'] += 1
             _total_iterations += 1
             if _total_iterations > MAX_STOPS:
                 waypoints.append((dest_lat, dest_lng))
@@ -588,6 +609,7 @@ class EnergyAwareRoutePlanner:
 
 
                     # Find stations near this corridor
+                    _dbg['t_filter'] -= time.time()
                     sc_lats = [c[0] for c in search_coords]
                     sc_lngs = [c[1] for c in search_coords]
                     min_clat = min(sc_lats) - (self.search_radius / 110.0)
@@ -604,12 +626,16 @@ class EnergyAwareRoutePlanner:
                         if lat is None or lng is None:
                             continue
                         if not (min_clat <= lat <= max_clat and min_clng <= lng <= max_clng):
+                            _dbg['stations_rejected_bbox'] += 1
                             continue
+                        _dbg['calls_min_dist'] += 1
                         d = _min_dist_to_route(lat, lng, search_coords)
                         if d > self.search_radius:
+                            _dbg['stations_rejected_route'] += 1
                             continue
                         slot = self._get_best_slot(st)
                         if not slot:
+                            _dbg['stations_rejected_slot'] += 1
                             continue
                         power = CHARGER_POWER.get(slot.get('slot_type', ''), 7.4)
                         rate = float(slot.get('rate_per_kwh', 10) or 10)
@@ -618,6 +644,7 @@ class EnergyAwareRoutePlanner:
                     # Expand search radius if no candidates
                     if not candidates:
                         if _expansion_exhausted:
+                            _dbg['t_filter'] += time.time()
                             if idx >= n - 2:
                                 waypoints.append((dest_lat, dest_lng))
                                 found_charge = True
@@ -633,6 +660,7 @@ class EnergyAwareRoutePlanner:
                         max_max_clng = max(sc_lngs) + (max_radius / 110.0 * lat_lng_ratio)
                         for mult in [2, 3, 4, 5, 6, 8, 10]:
                             r = self.search_radius * mult
+                            _dbg['expansion_iterations'] += 1
                             for st in stations:
                                 lat = st.get('latitude')
                                 lng = st.get('longitude')
@@ -640,19 +668,24 @@ class EnergyAwareRoutePlanner:
                                     continue
                                 if not (max_min_clat <= lat <= max_max_clat and max_min_clng <= lng <= max_max_clng):
                                     continue
+                                _dbg['calls_min_dist'] += 1
                                 d = _min_dist_to_route(lat, lng, search_coords)
                                 if d > r:
+                                    _dbg['stations_rejected_route'] += 1
                                     continue
                                 slot = self._get_best_slot(st)
                                 if not slot:
+                                    _dbg['stations_rejected_slot'] += 1
                                     continue
                                 power = CHARGER_POWER.get(slot.get('slot_type', ''), 7.4)
                                 rate = float(slot.get('rate_per_kwh', 10) or 10)
                                 candidates.append((st, slot, round(d, 2), power, rate))
                             if candidates:
                                 expanded = True
+                                _dbg['expansion_pass'] = True
                                 break
                         if not expanded:
+                            _dbg['t_filter'] += time.time()
                             if idx >= n - 2:
                                 waypoints.append((dest_lat, dest_lng))
                                 found_charge = True
@@ -660,13 +693,16 @@ class EnergyAwareRoutePlanner:
                                 break
                             _expansion_exhausted = True
                             continue
+                    _dbg['t_filter'] += time.time()
 
                     # Project candidates to route
+                    _dbg['t_scoring'] -= time.time()
                     cand_data = []
                     for c in candidates:
                         st = c[0]
                         st_lat = float(st['latitude'])
                         st_lng = float(st['longitude'])
+                        _dbg['calls_project'] += 1
                         _, stop_cum = self._project_to_route(st_lat, st_lng, route_coords, cum_km)
                         route_dist_km = max(0.1, stop_cum - current_cum)
                         leg_dist_km = max(0.1, stop_cum - current_cum)
@@ -697,7 +733,11 @@ class EnergyAwareRoutePlanner:
                     # OSRM table for road distances
                     osrm_limit = OSRM_MAX_COORDS - 1
                     osrm_candidates = [x[0] for x in cand_data[:osrm_limit]]
+                    _dbg['osrm_table_calls'] += 1
+                    _dbg['osrm_table_coords'] += len(osrm_candidates)
+                    _dbg['t_osrm_table'] -= time.time()
                     road_data = self._osrm_table(current_lat, current_lng, [c[0] for c in osrm_candidates])
+                    _dbg['t_osrm_table'] += time.time()
 
                     road_lookup = {}
                     if road_data:
@@ -765,6 +805,7 @@ class EnergyAwareRoutePlanner:
                         })
 
                     if not scored:
+                        _dbg['t_scoring'] += time.time()
                         if idx >= n - 2:
                             waypoints.append((dest_lat, dest_lng))
                             found_charge = True
@@ -773,6 +814,7 @@ class EnergyAwareRoutePlanner:
                         continue
 
                     scored.sort(key=lambda x: x['score'], reverse=True)
+                    _dbg['t_scoring'] += time.time()
                     best = scored[0]
 
                     st = best['st']
@@ -851,6 +893,7 @@ class EnergyAwareRoutePlanner:
                         alternatives=alts,
                     ))
 
+                    _dbg['calls_project'] += 1
                     stop_route_idx, _ = self._project_to_route(st_lat, st_lng, route_coords, cum_km)
                     if stop_route_idx <= last_stop_idx:
                         stop_route_idx = last_stop_idx + 1
@@ -938,7 +981,9 @@ class EnergyAwareRoutePlanner:
 
         # Get through-stations waypoint geometry
         waypoint_geometry = []
+        _dbg['t_osrm_route'] -= time.time()
         wg = self._osrm_route_waypoints(waypoints)
+        _dbg['t_osrm_route'] += time.time()
         if wg:
             waypoint_geometry = wg
 
@@ -974,6 +1019,28 @@ class EnergyAwareRoutePlanner:
             waypoint_geometry=waypoint_geometry,
             battery_profile=[],
         )
+
+        _t_total = time.time() - _dbg['t_start']
+        logger.info("========== TIMING [%s] ==========", strategy)
+        logger.info("  OSRM table:      %8.3f sec  (%d calls, %d coords total)",
+                     _dbg['t_osrm_table'], _dbg['osrm_table_calls'], _dbg['osrm_table_coords'])
+        logger.info("  OSRM route:      %8.3f sec", _dbg['t_osrm_route'])
+        logger.info("  Station filter:  %8.3f sec", _dbg['t_filter'])
+        logger.info("  Scoring/charge:  %8.3f sec", _dbg['t_scoring'])
+        logger.info("  Path segments:   %8d  (route_coords=%d)",
+                     len(seg_dists), len(route_coords))
+        logger.info("  Stations loaded: %8d", _dbg['stations_loaded'])
+        logger.info("  Rejected bbox:   %8d", _dbg['stations_rejected_bbox'])
+        logger.info("  Rejected route:  %8d", _dbg['stations_rejected_route'])
+        logger.info("  Rejected slot:   %8d", _dbg['stations_rejected_slot'])
+        logger.info("  _min_dist calls: %8d", _dbg['calls_min_dist'])
+        logger.info("  _project calls:  %8d", _dbg['calls_project'])
+        logger.info("  Expansion iters: %8d", _dbg['expansion_iterations'])
+        logger.info("  While iters:     %8d", _dbg['while_iterations'])
+        logger.info("  Waypoints:       %8d", len(waypoints))
+        logger.info("  Stops selected:  %8d", len(stops))
+        logger.info("  TOTAL TIME:      %8.3f sec", _t_total)
+        logger.info("====================================")
 
         issues = self._validate_route(plan)
         if issues:
