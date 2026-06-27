@@ -4,6 +4,9 @@ import { ToastProvider } from './context/ToastContext'
 import { NotificationProvider } from './context/NotificationContext'
 import NotificationToastHandler from './components/notifications/NotificationToast'
 import { VehicleProvider } from './context/VehicleContext'
+import { AIProvider } from './context/AIContext'
+import AiChatButton from './components/ai/AiChatButton'
+import AiChatWindow from './components/ai/AiChatWindow'
 import ProtectedRoute from './components/layout/ProtectedRoute'
 import ErrorBoundary from './components/layout/ErrorBoundary'
 import Home from './pages/Home'
@@ -38,6 +41,7 @@ function App() {
       <NotificationProvider>
         <NotificationToastHandler />
         <VehicleProvider>
+          <AIProvider>
           <Routes>
           <Route path="/" element={<ErrorBoundary><Home /></ErrorBoundary>} />
           <Route path="/about" element={<ErrorBoundary><About /></ErrorBoundary>} />
@@ -91,6 +95,9 @@ function App() {
           />
           <Route path="*" element={<Navigate to="/map" replace />} />
         </Routes>
+        <AiChatButton />
+        <AiChatWindow />
+      </AIProvider>
       </VehicleProvider>
       </NotificationProvider>
     </ToastProvider>
