@@ -6,6 +6,7 @@ from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from .models import WalletTransaction
 from .serializers import WalletTransactionSerializer, WalletTopUpSerializer
+from notifications.helpers import create_notification
 
 
 def get_wallet_balance(user):
@@ -60,6 +61,13 @@ class WalletTopUpView(APIView):
                 {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+        create_notification(
+            user=request.user,
+            notification_type='PAYMENT',
+            title='Wallet Recharged',
+            message=f'₹{amount} added to your wallet. New balance: ₹{new_balance}',
+        )
 
         return Response(
             {
