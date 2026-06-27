@@ -2,13 +2,14 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FiSearch, FiMapPin, FiBatteryCharging, FiNavigation, FiDollarSign, FiClock, FiSave, FiZap, FiMap, FiBattery } from 'react-icons/fi'
 import { createTrip } from '../../api/trips'
-import { planRoute } from '../../api/routePlanner'
+import { planRoute, planRouteStream } from '../../api/routePlanner'
 import { useAuth } from '../../context/AuthContext'
 import { useVehicle } from '../../context/VehicleContext'
 import { searchLocations } from '../../api/geocode'
 import { formatCurrency } from '../../utils/formatters'
 import VehicleSelector from '../map/VehicleSelector'
 import TripTimeline from './TripTimeline'
+import RouteWeatherTimeline from '../weather/RouteWeatherTimeline'
 
 var OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
 
@@ -32,6 +33,7 @@ export default function TripPlanner() {
   var [selectedAlt, setSelectedAlt] = useState(0)
   var [alternatives, setAlternatives] = useState([])
   var [isLoading, setIsLoading] = useState(false)
+  var [progressMessage, setProgressMessage] = useState('')
   var [error, setError] = useState('')
   var [saving, setSaving] = useState(false)
   var [saved, setSaved] = useState(false)
@@ -84,7 +86,7 @@ export default function TripPlanner() {
   async function handlePlanRoute() {
     if (!originCoords || !destCoords) { setError('Please select valid origin and destination from suggestions.'); return }
     if (!vehicle) { setError('No vehicle selected.'); return }
-    setIsLoading(true); setError(''); setSaved(false); setRoute(null)
+    setIsLoading(true); setProgressMessage('Requesting route...'); setError(''); setSaved(false); setRoute(null)
     try {
       var url = OSRM_BASE + '/' + originCoords.lng + ',' + originCoords.lat + ';' + destCoords.lng + ',' + destCoords.lat + '?geometries=geojson&overview=full&steps=true'
       var res = await fetch(url)
@@ -103,9 +105,9 @@ export default function TripPlanner() {
 
       var distanceM = osrmRoute.distance
       var durationS = osrmRoute.duration
-      console.log('OSRM raw: distance_m=' + distanceM + ' duration_s=' + durationS + ' km=' + (distanceM / 1000).toFixed(1))
 
-      var planResult = await planRoute({
+      // Use streaming endpoint with progress
+      await planRouteStream({
         route_coords: coordinates,
         total_distance_m: distanceM,
         total_duration_s: durationS,
@@ -113,26 +115,28 @@ export default function TripPlanner() {
         battery_start_percent: batteryPercent,
         origin_name: origin,
         dest_name: destination,
-      })
-
-      var backendPlan = planResult.data
-
-      setAlternatives(backendPlan.alternatives || [])
-      setSelectedAlt(0)
-      setRoute({
-        route: coordinates,
-        distance: distanceM,
-        duration: durationS,
-        backendPlan: backendPlan,
-        originalPlan: Object.assign({}, backendPlan),
-        origin: originCoords,
-        destination: destCoords,
-        originName: origin,
-        destName: destination,
-        stops: backendPlan.stops || [],
-      })
-    } catch (e) { console.error(e); setError('Route planning failed. Please try again.') }
-    setIsLoading(false)
+      },
+      function onProgress(msg) { setProgressMessage(msg) },
+      function onResult(backendPlan) {
+        setAlternatives(backendPlan.alternatives || [])
+        setSelectedAlt(0)
+        setRoute({
+          route: coordinates,
+          distance: distanceM,
+          duration: durationS,
+          backendPlan: backendPlan,
+          originalPlan: Object.assign({}, backendPlan),
+          origin: originCoords,
+          destination: destCoords,
+          originName: origin,
+          destName: destination,
+          stops: backendPlan.stops || [],
+        })
+        setIsLoading(false)
+        setProgressMessage('')
+      },
+      function onError(errMsg) { setError(errMsg || 'Route planning failed.'); setIsLoading(false); setProgressMessage('') })
+    } catch (e) { console.error(e); setError('Route planning failed. Please try again.'); setIsLoading(false); setProgressMessage('') }
   }
 
   function handleWhatIfChange(newValue) {
@@ -394,6 +398,7 @@ export default function TripPlanner() {
             className={'w-full py-2.5 text-sm font-medium rounded-xl transition-all flex items-center justify-center gap-2 ' + (isLoading || !originCoords || !destCoords ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-600 hover:to-emerald-700')}>
             {isLoading ? <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> Planning...</> : <><FiSearch className="w-4 h-4" /> Plan Trip</>}
           </button>
+          {isLoading && progressMessage && <div className="text-xs text-emerald-600 dark:text-emerald-400 text-center animate-pulse">{progressMessage}</div>}
 
           {error && <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-xl">{error}</div>}
         </div>
@@ -422,8 +427,7 @@ export default function TripPlanner() {
                   if (pd.idx === 0 && !totalTime) { totalTime = route.duration + (bp ? bp.total_charge_time_seconds : 0) }
                   var isSelected = selectedAlt === pd.idx
                   var stopCt = d.stops ? d.stops.length : 0
-                  if (pd.idx === 0 && bp) stopCt = bp.stops.length
-                  var cost = pd.idx === 0 ? (bp ? bp.total_cost : 0) : (d.total_cost || 0)
+                  var cost = d.total_cost || 0
                   var savings = Math.max(0, (fastestCost || 0) - cost)
                   var savingsFormatted = savings > 0.5 ? '\u20B9' + Math.round(savings).toLocaleString('en-IN') : null
 
@@ -528,6 +532,14 @@ export default function TripPlanner() {
               legs={bp ? bp.legs : []}
               finalSoc={arrivalPercent}
             />
+
+            {bp && (bp.origin_weather || bp.destination_weather || (bp.stops && bp.stops.some(function (s) { return s.weather }))) && (
+              <RouteWeatherTimeline routeWeather={[
+                bp.origin_weather ? { icon: bp.origin_weather.icon, temperature: bp.origin_weather.temperature, precipitation_probability: bp.origin_weather.precipitation_probability } : null,
+                ...(bp.stops || []).filter(function (s) { return s.weather }).map(function (s) { return { icon: s.weather.icon, temperature: s.weather.temperature, precipitation_probability: s.weather.precipitation_probability } }),
+                bp.destination_weather ? { icon: bp.destination_weather.icon, temperature: bp.destination_weather.temperature, precipitation_probability: bp.destination_weather.precipitation_probability } : null,
+              ].filter(Boolean)} />
+            )}
 
             {stopCount > 0 && bp.stops.map(function (stop, i) {
               var prevDist = i > 0 ? bp.stops[i - 1].distance_from_start_km : 0
