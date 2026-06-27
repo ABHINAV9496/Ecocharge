@@ -36,9 +36,8 @@ export function WebSocketProvider(props) {
 
   useEffect(function () {
     mountRef.current = true
-    var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    var host = window.location.host
-    var url = protocol + '//' + host + '/ws/stations/'
+    var wsUrl = import.meta.env.VITE_WS_URL
+    var url = wsUrl || 'ws://127.0.0.1:8000/ws/stations/'
 
     function connect() {
       if (!mountRef.current) return
