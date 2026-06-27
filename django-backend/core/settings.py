@@ -57,6 +57,9 @@ INSTALLED_APPS = [
     'trips',
     'contact',
     'vehicles',
+    'events',
+    'notifications',
+    'weather',
 ]
 
 MIDDLEWARE = [
@@ -202,6 +205,8 @@ SPECTACULAR_SETTINGS = {
         {'name': 'Bookings', 'description': 'Booking creation and management'},
         {'name': 'Wallet', 'description': 'Wallet top-up and transactions'},
         {'name': 'Trips', 'description': 'Trip planning and history'},
+        {'name': 'Weather', 'description': 'Current weather, forecasts, and route weather'},
+        {'name': 'Notifications', 'description': 'Real-time user notifications'},
     ],
 }
 
@@ -233,9 +238,20 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # Django Channels
 ASGI_APPLICATION = 'core.asgi.application'
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://redis:6379/1',
+        'TIMEOUT': 60 * 15,
+    },
+}
+
 CHANNEL_LAYERS = {
     'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [('redis', 6379)],
+        },
     },
 }
 

@@ -37,6 +37,15 @@ urlpatterns = [
     # Geocoding proxy
     path('api/geocode/', GeocodeView.as_view(), name='geocode'),
 
+    # Events test endpoint
+    path('api/events/', include('events.urls')),
+
+    # Notifications
+    path('api/notifications/', include('notifications.urls')),
+
+    # Weather
+    path('api/weather/', include('weather.urls')),
+
     # Swagger
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),

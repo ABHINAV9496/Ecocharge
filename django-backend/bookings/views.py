@@ -10,6 +10,7 @@ from .models import Booking
 from .serializers import BookingSerializer, CreateBookingSerializer
 from stations.models import ChargingSlot, ChargingStation
 from .tasks import send_booking_confirmation
+from notifications.helpers import create_notification
 
 
 CHARGER_POWER_MAP = {
@@ -102,6 +103,14 @@ class CreateBookingView(APIView):
 
         send_booking_confirmation.delay(booking.id)
 
+        create_notification(
+            user=request.user,
+            notification_type='BOOKING',
+            title='Booking Confirmed',
+            message=f'Your booking at {booking.slot.station.name} is confirmed for ₹{booking.amount_charged}',
+            link=f'/bookings',
+        )
+
         return Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
 
 
@@ -166,6 +175,14 @@ class BookingDetailView(APIView):
                 {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+        create_notification(
+            user=request.user,
+            notification_type='BOOKING',
+            title='Booking Cancelled',
+            message=f'Your booking at {booking.slot.station.name} has been cancelled',
+            link=f'/bookings',
+        )
 
         return Response(
             {'message': 'Booking cancelled successfully.'},
