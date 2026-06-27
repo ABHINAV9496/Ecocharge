@@ -1,6 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
+import { NotificationProvider } from './context/NotificationContext'
+import NotificationToastHandler from './components/notifications/NotificationToast'
 import { VehicleProvider } from './context/VehicleContext'
 import ProtectedRoute from './components/layout/ProtectedRoute'
 import ErrorBoundary from './components/layout/ErrorBoundary'
@@ -18,6 +20,7 @@ import TripsPage from './pages/TripsPage'
 import BookingsPage from './pages/BookingsPage'
 import AdminPage from './pages/AdminPage'
 import StationDetailPage from './pages/StationDetailPage'
+import NotificationCenter from './pages/NotificationCenter'
 
 function App() {
   var { user, loading } = useAuth()
@@ -32,8 +35,10 @@ function App() {
 
   return (
     <ToastProvider>
-      <VehicleProvider>
-        <Routes>
+      <NotificationProvider>
+        <NotificationToastHandler />
+        <VehicleProvider>
+          <Routes>
           <Route path="/" element={<ErrorBoundary><Home /></ErrorBoundary>} />
           <Route path="/about" element={<ErrorBoundary><About /></ErrorBoundary>} />
           <Route path="/features" element={<ErrorBoundary><Features /></ErrorBoundary>} />
@@ -69,6 +74,14 @@ function App() {
             }
           />
           <Route
+            path="/notifications"
+            element={
+              <ProtectedRoute roles={['DRIVER', 'STATION_OWNER', 'SUPER_ADMIN']}>
+                <ErrorBoundary><NotificationCenter /></ErrorBoundary>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin"
             element={
               <ProtectedRoute roles={['STATION_OWNER', 'SUPER_ADMIN']}>
@@ -79,6 +92,7 @@ function App() {
           <Route path="*" element={<Navigate to="/map" replace />} />
         </Routes>
       </VehicleProvider>
+      </NotificationProvider>
     </ToastProvider>
   )
 }
