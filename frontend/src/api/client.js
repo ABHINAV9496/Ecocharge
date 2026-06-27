@@ -66,7 +66,9 @@ apiClient.interceptors.response.use(
           })
 
           var newAccessToken = response.data.access
+          var newRefreshToken = response.data.refresh
           localStorage.setItem('access_token', newAccessToken)
+          if (newRefreshToken) localStorage.setItem('refresh_token', newRefreshToken)
 
           // Retry the original request with the new token
           originalRequest.headers.Authorization = 'Bearer ' + newAccessToken
