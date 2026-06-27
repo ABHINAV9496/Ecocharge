@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { FiSun, FiMoon, FiLogOut, FiBatteryCharging, FiUser } from 'react-icons/fi'
+import NotificationBell from '../notifications/NotificationBell'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { logout as logoutApi } from '../../api/auth'
@@ -55,7 +56,7 @@ export default function Navbar() {
           })}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
             onClick={toggleTheme}
             className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -63,6 +64,8 @@ export default function Navbar() {
           >
             {dark ? <FiSun className="w-4 h-4" /> : <FiMoon className="w-4 h-4" />}
           </button>
+
+          {user && <NotificationBell />}
 
           {user && (
             <div className="flex items-center gap-2">

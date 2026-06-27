@@ -23,6 +23,7 @@ import { formatCurrency, formatDate, ROLE_LABELS } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
 import { SkeletonStats } from '../layout/Skeleton'
 import WalletCard from '../wallet/WalletCard'
+import CurrentWeatherWidget from '../weather/CurrentWeatherWidget'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
 // ----------------------------------------------------------------
@@ -257,9 +258,10 @@ export default function DriverDashboard() {
               }
             </div>
 
-            {/* Wallet Card (1 column) */}
-            <div>
+            {/* Wallet + Weather (1 column) */}
+            <div className="space-y-4">
               <WalletCard />
+              <CurrentWeatherWidget />
             </div>
           </div>
         )
