@@ -7,11 +7,12 @@ from config import settings
 from prompts.system_prompt import SYSTEM_PROMPT
 from schemas import ChatRequest
 from services.openai_service import OpenAIService
-from tools.mock_trip_tool import MockTripTool
+from tools.context import auth_token_var
 from tools.mock_weather_tool import MockWeatherTool
 from tools.mock_station_tool import MockStationTool
 from tools.mock_wallet_tool import MockWalletTool
 from tools.mock_booking_tool import MockBookingTool
+from tools.real_trip_tool import RealTripTool
 from utils import get_logger
 
 logger = get_logger(__name__)
@@ -22,7 +23,7 @@ llm = OpenAIService()
 # --- Build registry ---
 registry = ToolRegistry()
 for tool in [
-    MockTripTool(),
+    RealTripTool(),
     MockWeatherTool(),
     MockStationTool(),
     MockWalletTool(),
@@ -30,7 +31,6 @@ for tool in [
 ]:
     registry.register(tool)
 
-# --- Build agent ---
 agent = Agent(llm=llm, registry=registry)
 
 
@@ -45,15 +45,19 @@ async def chat(body: ChatRequest):
             detail='AI service is not configured. Please set the OPENAI_API_KEY environment variable.',
         )
 
+    # Store auth token for tool execution
+    auth_token_var.set(body.token)
+
     messages = [{'role': 'system', 'content': SYSTEM_PROMPT}]
     for msg in body.history:
         messages.append(msg)
     messages.append({'role': 'user', 'content': body.message})
 
     logger.info(
-        'Incoming prompt: %s | history=%d messages',
+        'Incoming prompt: %s | history=%d messages | has_token=%s',
         body.message[:120],
         len(body.history),
+        bool(body.token),
     )
 
     async def stream():
@@ -96,6 +100,8 @@ async def chat_simple(body: ChatRequest):
             status_code=503,
             detail='AI service is not configured. Please set the OPENAI_API_KEY environment variable.',
         )
+
+    auth_token_var.set(body.token)
 
     messages = [{'role': 'system', 'content': SYSTEM_PROMPT}]
     for msg in body.history:
