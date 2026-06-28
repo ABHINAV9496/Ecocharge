@@ -8,11 +8,11 @@ from prompts.system_prompt import SYSTEM_PROMPT
 from schemas import ChatRequest
 from services.openai_service import OpenAIService
 from tools.context import auth_token_var
-from tools.mock_weather_tool import MockWeatherTool
 from tools.mock_station_tool import MockStationTool
 from tools.mock_wallet_tool import MockWalletTool
 from tools.mock_booking_tool import MockBookingTool
 from tools.real_trip_tool import RealTripTool
+from tools.real_weather_tool import RealWeatherTool
 from utils import get_logger
 
 logger = get_logger(__name__)
@@ -24,7 +24,7 @@ llm = OpenAIService()
 registry = ToolRegistry()
 for tool in [
     RealTripTool(),
-    MockWeatherTool(),
+    RealWeatherTool(),
     MockStationTool(),
     MockWalletTool(),
     MockBookingTool(),
