@@ -48,7 +48,11 @@ export function AIProvider(props) {
       var abortController = new AbortController()
       abortRef.current = abortController
 
-      var response = await sendChatMessage(text)
+      var history = messages
+        .filter(function (m) { return m.id !== 'welcome' })
+        .map(function (m) { return { role: m.role, content: m.content } })
+
+      var response = await sendChatMessage(text, history)
 
       var reader = response.body.getReader()
       var decoder = new TextDecoder()
