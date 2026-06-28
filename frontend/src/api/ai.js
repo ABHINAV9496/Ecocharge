@@ -1,5 +1,11 @@
 var AI_API_URL = 'http://127.0.0.1:8001'
 
+function getToken() {
+  var raw = localStorage.getItem('access_token')
+  if (raw === 'undefined' || raw === 'null') return ''
+  return raw || ''
+}
+
 export async function sendChatMessage(message, history) {
   var response = await fetch(AI_API_URL + '/api/chat', {
     method: 'POST',
@@ -7,6 +13,7 @@ export async function sendChatMessage(message, history) {
     body: JSON.stringify({
       message: message,
       history: history || [],
+      token: getToken(),
     }),
   })
 
@@ -31,6 +38,7 @@ export async function sendChatMessageSimple(message, history) {
     body: JSON.stringify({
       message: message,
       history: history || [],
+      token: getToken(),
     }),
   })
 
