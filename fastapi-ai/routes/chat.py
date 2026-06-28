@@ -1,19 +1,23 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from agent.agent import Agent
 from agent.tool_registry import ToolRegistry
 from config import settings
+from memory import MemoryService
 from prompts.system_prompt import SYSTEM_PROMPT
 from schemas import ChatRequest
 from services.openai_service import OpenAIService
+from services.reasoning_service import ReasoningService
 from tools.context import auth_token_var
-from tools.mock_station_tool import MockStationTool
+from tools.real_station_tool import RealStationTool
 from tools.mock_wallet_tool import MockWalletTool
 from tools.mock_booking_tool import MockBookingTool
 from tools.real_trip_tool import RealTripTool
 from tools.real_weather_tool import RealWeatherTool
-from utils import get_logger
+from utils import extract_user_id, get_logger
 
 logger = get_logger(__name__)
 router = APIRouter(prefix='/api', tags=['Chat'])
@@ -25,13 +29,72 @@ registry = ToolRegistry()
 for tool in [
     RealTripTool(),
     RealWeatherTool(),
-    MockStationTool(),
+    RealStationTool(),
     MockWalletTool(),
     MockBookingTool(),
 ]:
     registry.register(tool)
 
-agent = Agent(llm=llm, registry=registry)
+reasoner = ReasoningService(llm=llm)
+agent = Agent(llm=llm, registry=registry, reasoner=reasoner)
+
+# --- Memory ---
+memory_service: MemoryService | None = None
+
+
+def _get_memory_service() -> MemoryService | None:
+    global memory_service
+    if memory_service is None:
+        try:
+            memory_service = MemoryService(llm)
+        except Exception as e:
+            logger.warning('Memory service unavailable: %s', e)
+            return None
+    return memory_service
+
+
+async def _inject_memory(
+    user_id: int | None,
+    messages: list[dict],
+) -> None:
+    if user_id is None:
+        return
+    svc = _get_memory_service()
+    if svc is None:
+        return
+    prefs = await svc.load_preferences(user_id)
+    context = svc.build_context(prefs)
+    if context:
+        messages[0]['content'] += '\n\n' + context
+
+
+async def _update_memory(
+    user_id: int | None,
+    user_message: str,
+    assistant_reply: str,
+) -> None:
+    if user_id is None or not assistant_reply:
+        return
+    svc = _get_memory_service()
+    if svc is None:
+        return
+    try:
+        await svc.update_from_conversation(
+            user_id, user_message, assistant_reply,
+        )
+    except Exception as e:
+        logger.warning('Memory update failed: %s', e)
+
+
+def _build_messages(
+    body: ChatRequest,
+    user_id: int | None,
+) -> list[dict]:
+    messages = [{'role': 'system', 'content': SYSTEM_PROMPT}]
+    for msg in body.history:
+        messages.append(msg)
+    messages.append({'role': 'user', 'content': body.message})
+    return messages
 
 
 @router.post('/chat')
@@ -48,16 +111,15 @@ async def chat(body: ChatRequest):
     # Store auth token for tool execution
     auth_token_var.set(body.token)
 
-    messages = [{'role': 'system', 'content': SYSTEM_PROMPT}]
-    for msg in body.history:
-        messages.append(msg)
-    messages.append({'role': 'user', 'content': body.message})
+    user_id = extract_user_id(body.token)
+    messages = _build_messages(body, user_id)
+    await _inject_memory(user_id, messages)
 
     logger.info(
-        'Incoming prompt: %s | history=%d messages | has_token=%s',
+        'Incoming prompt: %s | history=%d messages | user_id=%s',
         body.message[:120],
         len(body.history),
-        bool(body.token),
+        user_id,
     )
 
     async def stream():
@@ -72,6 +134,10 @@ async def chat(body: ChatRequest):
                 len(body.message),
                 len(full_reply),
                 settings.OPENAI_MODEL,
+            )
+            # Fire-and-forget memory update
+            asyncio.create_task(
+                _update_memory(user_id, body.message, full_reply),
             )
         except Exception as e:
             logger.error('Agent streaming error: %s', str(e))
@@ -103,15 +169,18 @@ async def chat_simple(body: ChatRequest):
 
     auth_token_var.set(body.token)
 
-    messages = [{'role': 'system', 'content': SYSTEM_PROMPT}]
-    for msg in body.history:
-        messages.append(msg)
-    messages.append({'role': 'user', 'content': body.message})
+    user_id = extract_user_id(body.token)
+    messages = _build_messages(body, user_id)
+    await _inject_memory(user_id, messages)
 
     try:
         reply = ''
         async for token in agent.chat_stream(messages):
             reply += token
+        # Fire-and-forget memory update
+        asyncio.create_task(
+            _update_memory(user_id, body.message, reply),
+        )
         return {'reply': reply}
     except Exception as e:
         logger.error('Agent generation error: %s', str(e))
