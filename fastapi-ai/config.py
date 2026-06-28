@@ -12,6 +12,7 @@ class Settings:
         'AI_CORS_ORIGINS',
         'http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174',
     ).split(',')
+    REDIS_URL: str = os.getenv('REDIS_URL', 'redis://redis:6379/0')
 
 
 settings = Settings()
