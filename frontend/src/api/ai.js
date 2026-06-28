@@ -1,10 +1,13 @@
 var AI_API_URL = 'http://127.0.0.1:8001'
 
-export async function sendChatMessage(message) {
+export async function sendChatMessage(message, history) {
   var response = await fetch(AI_API_URL + '/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: message }),
+    body: JSON.stringify({
+      message: message,
+      history: history || [],
+    }),
   })
 
   if (!response.ok) {
@@ -21,11 +24,14 @@ export async function sendChatMessage(message) {
   return response
 }
 
-export async function sendChatMessageSimple(message) {
+export async function sendChatMessageSimple(message, history) {
   var response = await fetch(AI_API_URL + '/api/chat/simple', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: message }),
+    body: JSON.stringify({
+      message: message,
+      history: history || [],
+    }),
   })
 
   if (!response.ok) {
