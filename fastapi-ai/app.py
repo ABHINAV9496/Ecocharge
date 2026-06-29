@@ -31,8 +31,8 @@ async def health():
     return {
         'status': 'ok',
         'service': 'EcoCharge AI',
-        'model': settings.OPENAI_MODEL,
-        'configured': bool(settings.OPENAI_API_KEY),
+        'model': settings.GROQ_MODEL,
+        'configured': bool(settings.GROQ_API_KEY),
     }
 
 

@@ -208,83 +208,149 @@ class WeatherService:
 
     @classmethod
     def get_weather_by_city(cls, city):
-        ck = cls._cache_key('city', city.lower().strip())
+        """
+        Resolve a city name to coordinates using Open-Meteo geocoding..3
+
+        Priority:
+        1. Exact city match in India
+        2. Any Indian city
+        3. Exact city match anywhere
+        4. First result
+        """
+
+        city = city.strip()
+
+        ck = cls._cache_key("city", city.lower())
         cached = cache.get(ck)
         if cached:
             return cached
 
-        geo = cls._get(f'{GEOCODING_BASE}/search', {
-            'name': city,
-            'count': 5,
-            'language': 'en',
-            'format': 'json',
-        })
+        geo = cls._get(
+            f"{GEOCODING_BASE}/search",
+            {
+                "name": city,
+                "count": 10,
+                "language": "en",
+                "format": "json",
+            },
+        )
 
-        results = geo.get('results', [])
+        results = geo.get("results", [])
+
         if not results:
-            raise WeatherServiceError(f'City not found: {city}')
+            raise WeatherServiceError(f"City not found: {city}")
 
-        loc = results[0]
-        weather = cls.get_current_weather(loc['latitude'], loc['longitude'])
-        weather['city'] = loc['name']
-        weather['country'] = loc.get('country', '')
-        weather['latitude'] = loc['latitude']
-        weather['longitude'] = loc['longitude']
+        city_lower = city.lower()
+
+        preferred = None
+
+        # --------------------------------------------------------
+        # Priority 1 : Exact city name in India
+        # --------------------------------------------------------
+        for place in results:
+            if (
+                place.get("country", "").lower() == "india"
+                and place.get("name", "").lower() == city_lower
+            ):
+                preferred = place
+                break
+
+        # --------------------------------------------------------
+        # Priority 2 : Any Indian location
+        # --------------------------------------------------------
+        if preferred is None:
+            for place in results:
+                if place.get("country", "").lower() == "india":
+                    preferred = place
+                    break
+
+        # --------------------------------------------------------
+        # Priority 3 : Exact city anywhere
+        # --------------------------------------------------------
+        if preferred is None:
+            for place in results:
+                if place.get("name", "").lower() == city_lower:
+                    preferred = place
+                    break
+
+        # --------------------------------------------------------
+        # Priority 4 : First result
+        # --------------------------------------------------------
+        if preferred is None:
+            preferred = results[0]
+
+        logger.info(
+            "Weather geocoder selected: %s, %s",
+            preferred.get("name"),
+            preferred.get("country"),
+        )
+
+        weather = cls.get_current_weather(
+            preferred["latitude"],
+            preferred["longitude"],
+        )
+
+        weather["city"] = preferred.get("name")
+        weather["country"] = preferred.get("country")
+        weather["state"] = preferred.get("admin1", "")
+        weather["latitude"] = preferred["latitude"]
+        weather["longitude"] = preferred["longitude"]
 
         cache.set(ck, weather, CACHE_TTL)
+
         return weather
 
-    @classmethod
-    def get_route_weather(cls, route_coords):
-        if not route_coords:
-            return {'samples': [], 'units': {}}
+        @classmethod
+        def get_route_weather(cls, route_coords):
+            if not route_coords:
+                return {'samples': [], 'units': {}}
 
-        SAMPLE_SIZE = 8
-        step = max(1, len(route_coords) // SAMPLE_SIZE)
-        indices = list(range(0, len(route_coords), step))
-        if indices[-1] != len(route_coords) - 1:
-            indices.append(len(route_coords) - 1)
+            SAMPLE_SIZE = 8
+            step = max(1, len(route_coords) // SAMPLE_SIZE)
+            indices = list(range(0, len(route_coords), step))
+            if indices[-1] != len(route_coords) - 1:
+                indices.append(len(route_coords) - 1)
 
-        samples = []
-        current_weather = None
+            samples = []
+            current_weather = None
 
-        for idx in indices:
-            coord = route_coords[idx]
-            lat, lng = coord[0], coord[1]
-            if current_weather is None:
-                current_weather = cls.get_current_weather(lat, lng)
-            else:
-                try:
+            for idx in indices:
+                coord = route_coords[idx]
+                lat, lng = coord[0], coord[1]
+                if current_weather is None:
                     current_weather = cls.get_current_weather(lat, lng)
-                except WeatherServiceError:
-                    pass
+                else:
+                    try:
+                        current_weather = cls.get_current_weather(lat, lng)
+                    except WeatherServiceError:
+                        pass
 
-            samples.append({
-                'index': idx,
-                'latitude': lat,
-                'longitude': lng,
-                'temperature': current_weather.get('temperature'),
-                'description': current_weather.get('description'),
-                'icon': current_weather.get('icon'),
-                'precipitation_probability': cls._get_precip_prob(lat, lng),
-                'wind_speed': current_weather.get('wind_speed'),
-                'weather_code': current_weather.get('weather_code'),
-            })
+                samples.append({
+                    'index': idx,
+                    'latitude': lat,
+                    'longitude': lng,
+                    'temperature': current_weather.get('temperature'),
+                    'description': current_weather.get('description'),
+                    'icon': current_weather.get('icon'),
+                    'precipitation_probability': cls._get_precip_prob(lat, lng),
+                    'wind_speed': current_weather.get('wind_speed'),
+                    'weather_code': current_weather.get('weather_code'),
+                })
 
-        return {'samples': samples}
+            return {'samples': samples}
 
-    @classmethod
-    def _get_precip_prob(cls, latitude, longitude):
-        try:
-            data = cls._get(f'{OPEN_METEO_BASE}/forecast', {
-                'latitude': latitude,
-                'longitude': longitude,
-                'hourly': 'precipitation_probability',
-                'forecast_hours': 1,
-                'timezone': 'auto',
-            })
-            hourly = data.get('hourly', {})
-            probs = hourly.get('precipitation_probability', [])
-            return probs[0] if probs else 0
-        except WeatherServiceError:
-            return 0
+        @classmethod
+        def _get_precip_prob(cls, latitude, longitude):
+            try:
+                data = cls._get(f'{OPEN_METEO_BASE}/forecast', {
+                    'latitude': latitude,
+                    'longitude': longitude,
+                    'hourly': 'precipitation_probability',
+                    'forecast_hours': 1,
+                    'timezone': 'auto',
+                })
+                hourly = data.get('hourly', {})
+                probs = hourly.get('precipitation_probability', [])
+                return probs[0] if probs else 0
+            except WeatherServiceError:
+                return 0
