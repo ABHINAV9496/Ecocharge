@@ -6,10 +6,11 @@ function getToken() {
   return raw || ''
 }
 
-export async function sendChatMessage(message, history) {
+export async function sendChatMessage(message, history, signal) {
   var response = await fetch(AI_API_URL + '/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal: signal,
     body: JSON.stringify({
       message: message,
       history: history || [],
