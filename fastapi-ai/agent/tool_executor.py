@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 
@@ -7,42 +8,26 @@ logger = logging.getLogger(__name__)
 
 
 class ToolExecutor:
-    """Executes a tool and returns the result.
-
-    Responsible for:
-    - Running the tool's execute() method
-    - Returning structured JSON
-    - Logging execution time and result
-    - Handling failures gracefully
-    """
+    """Executes a tool and returns the result."""
 
     async def execute(self, tool: BaseTool, arguments: dict) -> dict:
         start = time.monotonic()
-        logger.info(
-            'ToolExecutor: executing %s with args=%s',
-            tool.name,
-            arguments,
-        )
+        logger.info('--- TOOL EXECUTOR ---')
+        logger.info('Tool name: %s', tool.name)
+        logger.info('Kwargs: %s', json.dumps(arguments, indent=2))
 
         try:
             result = await tool.execute(**arguments)
             elapsed = time.monotonic() - start
-            logger.info(
-                'ToolExecutor: %s completed in %.2fs — result=%s',
-                tool.name,
-                elapsed,
-                result,
-            )
+            logger.info('Tool %s completed in %.2fs', tool.name, elapsed)
+            logger.info('Result: %s', json.dumps(result, indent=2, default=str)[:2000])
+            logger.info('--- END TOOL EXECUTOR ---')
             return result
         except Exception as e:
             elapsed = time.monotonic() - start
-            logger.error(
-                'ToolExecutor: %s failed after %.2fs — %s',
-                tool.name,
-                elapsed,
-                str(e),
-            )
+            logger.exception('Tool %s raised an exception after %.2fs', tool.name, elapsed)
+            logger.info('--- END TOOL EXECUTOR (EXCEPTION) ---')
             return {
                 'error': True,
-                'message': f'I\'m currently unable to access the {tool.name} service. Please try again later.',
+                'message': f'The {tool.name} service encountered an error. Please try again later.',
             }
