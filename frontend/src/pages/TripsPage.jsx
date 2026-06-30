@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import Navbar from '../components/layout/Navbar'
 import Sidebar from '../components/layout/Sidebar'
@@ -6,6 +8,9 @@ import TripHistory from '../components/trip/TripHistory'
 
 export default function TripsPage() {
   const { user } = useAuth()
+  var location = useLocation()
+  var initialTab = (location.state && location.state.tripId) ? 'history' : 'planner'
+  var [activeTab, setActiveTab] = useState(initialTab)
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -17,32 +22,22 @@ export default function TripsPage() {
             <div className="max-w-6xl mx-auto px-4">
               <div className="flex">
                 <button
-                  onClick={() => {
-                    const el = document.getElementById('planner')
-                    if (el) el.scrollIntoView({ behavior: 'smooth' })
-                  }}
-                  className="px-4 py-3 text-sm font-medium text-ev-green border-b-2 border-ev-green"
+                  onClick={() => { setActiveTab('planner') }}
+                  className={'px-4 py-3 text-sm font-medium transition-colors ' + (activeTab === 'planner' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300')}
                 >
                   Trip Planner
                 </button>
                 <button
-                  onClick={() => {
-                    const el = document.getElementById('history')
-                    if (el) el.scrollIntoView({ behavior: 'smooth' })
-                  }}
-                  className="px-4 py-3 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                  onClick={() => { setActiveTab('history') }}
+                  className={'px-4 py-3 text-sm font-medium transition-colors ' + (activeTab === 'history' ? 'text-emerald-600 border-b-2 border-emerald-600' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300')}
                 >
                   History
                 </button>
               </div>
             </div>
           </div>
-          <div id="planner">
-            <TripPlanner />
-          </div>
-          <div id="history">
-            <TripHistory />
-          </div>
+          {activeTab === 'planner' && <div id="planner"><TripPlanner /></div>}
+          {activeTab === 'history' && <div id="history"><TripHistory highlightId={location.state && location.state.tripId} /></div>}
         </div>
       </div>
     </div>

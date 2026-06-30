@@ -4,12 +4,13 @@ import { MapContainer, TileLayer, Marker, Popup, useMapEvents, LayersControl, Po
 import MarkerClusterGroup from 'react-leaflet-cluster'
 
 import L from 'leaflet'
-import { FiSearch, FiCrosshair, FiBatteryCharging, FiRefreshCw, FiNavigation, FiArrowRight, FiX, FiClock, FiDollarSign, FiZap, FiInfo, FiFilter, FiMap } from 'react-icons/fi'
+import { FiSearch, FiCrosshair, FiBatteryCharging, FiRefreshCw, FiNavigation, FiArrowRight, FiX, FiClock, FiDollarSign, FiZap, FiInfo, FiFilter, FiMap, FiExternalLink, FiBookOpen, FiWifi, FiCoffee, FiShield } from 'react-icons/fi'
 import { getStations } from '../../api/stations'
 import { searchLocations } from '../../api/geocode'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { useVehicle } from '../../context/VehicleContext'
+import { formatDistance, formatDuration } from '../../utils/formatters'
 import 'leaflet/dist/leaflet.css'
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -63,12 +64,6 @@ function FitBoundsOnRoute({ routePlan }) {
   return null
 }
 
-function formatDuration(seconds) {
-  if (!seconds || seconds <= 0) return '0m'
-  var h = Math.floor(seconds / 3600); var m = Math.round((seconds % 3600) / 60)
-  return h > 0 ? h + 'h ' + m + 'm' : m + 'm'
-}
-
 export default function MapView({ routePlan }) {
   var { vehicle } = useVehicle()
   var navigate = useNavigate()
@@ -112,13 +107,13 @@ export default function MapView({ routePlan }) {
   }, [])
 
   useEffect(function () {
-    if (navigator.geolocation) {
+    if (!routePlan && navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(function (position) {
         var loc = [position.coords.latitude, position.coords.longitude]; setUserLocation(loc)
-        if (mapRef.current) mapRef.current.flyTo(loc, 13)
+        if (mapRef.current) mapRef.current.setView(loc, 13)
       }, function () { }, { enableHighAccuracy: true, timeout: 10000 })
     }
-  }, [])
+  }, [routePlan])
 
   useEffect(function () {
     if (!initialLoadDone.current) {
@@ -295,7 +290,23 @@ export default function MapView({ routePlan }) {
         {routePlan && routePlan.stops && routePlan.stops.map(function (stop, i) {
           if (!stop.lat || !stop.lng) return null
           return <Marker key={'stop-' + i} position={[stop.lat, stop.lng]} icon={createStopIcon(i + 1)}>
-            <Popup><div className="min-w-[180px]"><h3 className="font-semibold text-sm mb-1">{stop.station_name || stop.name || 'Charging Stop'}</h3><p className="text-xs text-gray-500 mb-1">{stop.address || ''}</p>{stop.arrival_soc_percent != null && <div className="flex items-center gap-2 text-xs text-gray-400 mt-1"><span className="text-amber-400">Arrive {stop.arrival_soc_percent}%</span><FiArrowRight className="w-2.5 h-2.5" /><span className="text-emerald-400">Depart {stop.departure_soc_percent}%</span></div>}<div className="text-xs text-amber-600 font-medium mt-1">Charging stop #{i + 1}</div></div></Popup>
+            <Popup><div className="min-w-[200px]">
+              <h3 className="font-semibold text-sm text-gray-900 dark:text-white mb-1">{stop.station_name || stop.name || 'Charging Stop'}</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{stop.address || ''}</p>
+              {stop.arrival_soc_percent != null && <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 mb-1.5">
+                <span className="bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded text-amber-600 dark:text-amber-400 font-medium">Arrive {stop.arrival_soc_percent}%</span>
+                <FiArrowRight className="w-2.5 h-2.5" />
+                <span className="bg-emerald-100 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded text-emerald-600 dark:text-emerald-400 font-medium">Depart {stop.departure_soc_percent}%</span>
+              </div>}
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400 mb-2">
+                {stop.charger_power_kw != null && <span className="flex items-center gap-1"><FiZap className="w-3 h-3 text-amber-400" />{stop.charger_power_kw} kW</span>}
+                {stop.slot_type && <span className="flex items-center gap-1"><FiInfo className="w-3 h-3 text-blue-400" />{stop.slot_type === 'DC_ULTRA' ? 'DC Ultra' : stop.slot_type === 'DC_FAST' ? 'DC Fast' : stop.slot_type === 'AC_FAST' ? 'AC Fast' : stop.slot_type}</span>}
+                {stop.charge_time_seconds && <span className="flex items-center gap-1"><FiClock className="w-3 h-3 text-amber-400" />{formatDuration(stop.charge_time_seconds)}</span>}
+                {stop.cost != null && <span className="flex items-center gap-1"><FiDollarSign className="w-3 h-3 text-emerald-400" />{'\u20B9' + Math.round(stop.cost).toLocaleString('en-IN')}</span>}
+              </div>
+              {stop.charge_kwh != null && <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-1.5">Energy: {stop.charge_kwh.toFixed(1)} kWh</p>}
+              <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">Charging stop #{i + 1}</div>
+            </div></Popup>
           </Marker>
         })}
         <MarkerClusterGroup chunkedLoading maxClusterRadius={60} spiderfyOnMaxZoom={true} showCoverageOnHover={false} disableClusteringAtZoom={14}>
@@ -304,7 +315,35 @@ export default function MapView({ routePlan }) {
             var rawStatus = (station.status || '').toUpperCase()
             var mStatus = rawStatus === 'ACTIVE' || rawStatus === 'AVAILABLE' ? 'ACTIVE' : rawStatus === 'MAINTENANCE' ? 'MAINTENANCE' : 'INACTIVE'
             return <Marker key={station.id} position={[lat, lng]} icon={createStationIcon(mStatus, false)}>
-              <Popup><div className="min-w-[180px]"><div className="flex items-center gap-2 mb-1.5"><div className={'w-2 h-2 rounded-full shrink-0 ' + (mStatus === 'ACTIVE' ? 'bg-emerald-500' : mStatus === 'MAINTENANCE' ? 'bg-amber-500' : 'bg-gray-400')} /><h3 className="font-semibold text-sm">{station.name}</h3></div><p className="text-xs text-gray-500 mb-2">{station.address}</p><button onClick={function () { navigate('/stations/' + station.id) }} className="w-full py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-medium rounded-lg hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-md">View Details</button></div></Popup>
+              <Popup><div className="min-w-[220px]">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <div className={'w-2 h-2 rounded-full shrink-0 ' + (mStatus === 'ACTIVE' ? 'bg-emerald-500' : mStatus === 'MAINTENANCE' ? 'bg-amber-500' : 'bg-gray-400')} />
+                    <h3 className="font-semibold text-sm text-gray-900 dark:text-white">{station.name}</h3>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-relaxed">{station.address}</p>
+                <div className="flex flex-wrap gap-1.5 mb-2.5">
+                  {station.slots && station.slots.slice(0, 3).map(function (s, si) {
+                    var connColors = { DC_ULTRA: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400', DC_FAST: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400', AC_FAST: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400', AC_SLOW: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' }
+                    var cls = connColors[s.slot_type] || 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                    return <span key={si} className={'text-[10px] font-medium px-1.5 py-0.5 rounded ' + cls}>{s.slot_type === 'DC_ULTRA' ? 'DC Ultra' : s.slot_type === 'DC_FAST' ? 'DC Fast' : s.slot_type === 'AC_FAST' ? 'AC Fast' : s.slot_type === 'AC_SLOW' ? 'AC Slow' : s.slot_type} {s.power_kw ? '(' + s.power_kw + 'kW)' : ''}</span>
+                  })}
+                  {station.slots && station.slots.length > 3 && <span className="text-[10px] text-gray-400 dark:text-gray-500">+{station.slots.length - 3} more</span>}
+                </div>
+                <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mb-2.5">
+                  <span className="flex items-center gap-1"><FiZap className="w-3 h-3" />{station.slots ? station.slots.filter(function (s) { return s.status === 'AVAILABLE' || s.status === 'AVAILABLE' }).length : 0} free</span>
+                  {(station.amenities || []).slice(0, 3).map(function (a, ai) {
+                    var amenityIcon = a.toLowerCase().indexOf('wifi') !== -1 ? FiWifi : a.toLowerCase().indexOf('cafe') !== -1 || a.toLowerCase().indexOf('coffee') !== -1 ? FiCoffee : a.toLowerCase().indexOf('security') !== -1 ? FiShield : FiInfo
+                    return <span key={ai} className="flex items-center gap-0.5"><amenityIcon className="w-3 h-3" />{a}</span>
+                  })}
+                </div>
+                <div className="flex gap-1.5">
+                  <button onClick={function () { navigate('/stations/' + station.id + '?book=true') }} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiBookOpen className="w-3 h-3" /> Book Now</button>
+                  <button onClick={function () { navigate('/stations/' + station.id) }} className="flex-1 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiExternalLink className="w-3 h-3" /> Details</button>
+                  <button onClick={function () { window.open('https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng, '_blank') }} className="flex-1 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiNavigation className="w-3 h-3" /> Go</button>
+                </div>
+              </div></Popup>
             </Marker>
           })}
         </MarkerClusterGroup>

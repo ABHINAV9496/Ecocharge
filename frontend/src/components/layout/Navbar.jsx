@@ -5,11 +5,17 @@ import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { logout as logoutApi } from '../../api/auth'
 
-var NAV_LINKS = [
+var GUEST_LINKS = [
   { label: 'Home', path: '/' },
   { label: 'About', path: '/about' },
   { label: 'Features', path: '/features' },
   { label: 'Contact', path: '/contact' },
+]
+
+var APP_LINKS = [
+  { label: 'Map', path: '/map' },
+  { label: 'Trips', path: '/trips' },
+  { label: 'Dashboard', path: '/dashboard' },
 ]
 
 export default function Navbar() {
@@ -37,7 +43,7 @@ export default function Navbar() {
         </Link>
 
         <div className="hidden md:flex items-center gap-1">
-          {NAV_LINKS.map(function (link) {
+          {(user ? APP_LINKS : GUEST_LINKS).map(function (link) {
             var isActive = location.pathname === link.path
             return (
               <Link
@@ -46,7 +52,7 @@ export default function Navbar() {
                 className={
                   'px-4 py-1.5 text-sm rounded-lg transition-colors no-underline ' +
                   (isActive
-                    ? 'text-ev-green bg-ev-green/10 font-medium dark:text-emerald-400 dark:bg-emerald-900/20'
+                    ? 'text-emerald-600 bg-emerald-50 font-medium dark:text-emerald-400 dark:bg-emerald-900/20'
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800')
                 }
               >

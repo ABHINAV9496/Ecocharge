@@ -14,9 +14,8 @@
 */
 
 import { Link, useLocation } from 'react-router-dom'
-import { FiMap, FiGrid, FiNavigation, FiUsers, FiCalendar, FiBell } from 'react-icons/fi'
+import { FiMap, FiGrid, FiNavigation, FiUsers, FiCalendar } from 'react-icons/fi'
 import { useAuth } from '../../context/AuthContext'
-import { useNotifications } from '../../context/NotificationContext'
 
 // Define all available navigation items
 // Each item has: path (URL), label (display name), icon, and allowed roles
@@ -24,7 +23,6 @@ var allNavItems = [
   { path: '/map',        label: 'Map',        icon: FiMap,        roles: ['DRIVER', 'GUEST', 'STATION_OWNER', 'SUPER_ADMIN'] },
   { path: '/bookings',   label: 'Bookings',   icon: FiCalendar,   roles: ['DRIVER'] },
   { path: '/trips',      label: 'Trip Planner', icon: FiNavigation, roles: ['DRIVER'] },
-  { path: '/notifications', label: 'Notifications', icon: FiBell, roles: ['DRIVER', 'STATION_OWNER', 'SUPER_ADMIN'] },
   { path: '/dashboard',  label: 'Dashboard',  icon: FiGrid,       roles: ['DRIVER', 'STATION_OWNER', 'SUPER_ADMIN'] },
   { path: '/admin',      label: 'Admin',      icon: FiUsers,      roles: ['SUPER_ADMIN'] },
 ]
@@ -32,7 +30,6 @@ var allNavItems = [
 export default function Sidebar() {
   var currentPath = useLocation().pathname
   var { user } = useAuth()
-  var { unreadCount } = useNotifications()
 
   // Only show navigation items that the user's role allows
   // For example, a DRIVER won't see the "Admin" link
@@ -60,24 +57,9 @@ export default function Sidebar() {
                 }
               `}
             >
-              <div className="relative shrink-0">
-                <ItemIcon className="w-5 h-5" />
-                {item.path === '/notifications' && unreadCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[14px] h-3.5 px-1 text-[8px] font-bold text-white bg-red-500 rounded-full leading-none">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </div>
+              <ItemIcon className="w-5 h-5" />
 
-              {/* Label is hidden on small screens (only icons visible) */}
               <span className="hidden md:block text-sm">{item.label}</span>
-
-              {/* Unread count badge */}
-              {item.path === '/notifications' && unreadCount > 0 && (
-                <span className="hidden md:flex ml-auto items-center justify-center min-w-[18px] h-4 px-1 text-[10px] font-bold text-white bg-red-500 rounded-full leading-none">
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              )}
 
               {/* Active indicator dot */}
               {isActive && (

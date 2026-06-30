@@ -6,19 +6,12 @@ import { planRoute, planRouteStream } from '../../api/routePlanner'
 import { useAuth } from '../../context/AuthContext'
 import { useVehicle } from '../../context/VehicleContext'
 import { searchLocations } from '../../api/geocode'
-import { formatCurrency } from '../../utils/formatters'
+import { formatCurrency, formatDuration, chargerLabel } from '../../utils/formatters'
 import VehicleSelector from '../map/VehicleSelector'
 import TripTimeline from './TripTimeline'
 import RouteWeatherTimeline from '../weather/RouteWeatherTimeline'
 
 var OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
-
-function formatDuration(seconds) {
-  if (!seconds || seconds <= 0) return '0m'
-  var h = Math.floor(seconds / 3600)
-  var m = Math.round((seconds % 3600) / 60)
-  return h > 0 ? h + 'h ' + m + 'm' : m + 'm'
-}
 
 export default function TripPlanner() {
   var { user } = useAuth()
@@ -312,6 +305,9 @@ export default function TripPlanner() {
   var stopCount = bp ? bp.stops.length : 0
   var arrivalPercent = bp ? bp.final_soc_percent : 0
   var batteryColorClass = arrivalPercent > 20 ? 'text-emerald-500' : 'text-red-500'
+  var energyKwh = bp ? bp.total_energy_consumed_kwh : 0
+  var chargingTime = bp ? bp.total_charge_time_seconds : 0
+  var totalCost = bp ? bp.total_cost : 0
 
   // === Calculation Validation ===
   var validationWarnings = []
@@ -472,8 +468,8 @@ export default function TripPlanner() {
         {route && (
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Route Summary</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              <div className="col-span-2 md:col-span-3 flex items-center gap-2 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-800/80 rounded-xl p-2.5 border border-gray-100 dark:border-gray-700">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="col-span-2 md:col-span-4 flex items-center gap-2 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-800/80 rounded-xl p-2.5 border border-gray-100 dark:border-gray-700">
                 <FiClock className="w-4 h-4 text-gray-400 shrink-0" />
                 <div className="min-w-0">
                   <div className="text-[10px] text-gray-400 uppercase tracking-wider">Total Trip Time</div>
@@ -522,6 +518,13 @@ export default function TripPlanner() {
                   <div className={'text-sm font-semibold ' + batteryColorClass}>{arrivalPercent}%</div>
                 </div>
               </div>
+              {energyKwh > 0 && <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-xl p-2.5">
+                <FiZap className="w-4 h-4 text-violet-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">Energy</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white">{energyKwh.toFixed(1)} kWh</div>
+                </div>
+              </div>}
             </div>
 
             <TripTimeline
@@ -544,7 +547,7 @@ export default function TripPlanner() {
             {stopCount > 0 && bp.stops.map(function (stop, i) {
               var prevDist = i > 0 ? bp.stops[i - 1].distance_from_start_km : 0
               var legDist = stop.distance_from_start_km - prevDist
-              var chargerLabel = stop.slot_type === 'DC_FAST' ? 'DC Fast' : stop.slot_type === 'DC_ULTRA' ? 'DC Ultra' : stop.slot_type === 'AC_FAST' ? 'AC Fast' : stop.slot_type || 'Charger'
+              var chargerLabelText = chargerLabel(stop.slot_type)
               var chargerColor = stop.slot_type && stop.slot_type.startsWith('DC') ? 'text-purple-600 dark:text-purple-400' : 'text-amber-600 dark:text-amber-400'
               var chargerBg = stop.slot_type && stop.slot_type.startsWith('DC') ? 'bg-purple-100 dark:bg-purple-900/20' : 'bg-amber-100 dark:bg-amber-900/20'
               return (
@@ -554,7 +557,7 @@ export default function TripPlanner() {
                       <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-[10px] font-bold text-gray-500">{i + 1}</div>
                       <span className="text-sm font-semibold text-gray-900 dark:text-white">{stop.station_name || 'Stop ' + (i + 1)}</span>
                     </div>
-                    <span className={'text-[10px] font-medium px-1.5 py-0.5 rounded ' + chargerBg + ' ' + chargerColor}>{chargerLabel}</span>
+                    <span className={'text-[10px] font-medium px-1.5 py-0.5 rounded ' + chargerBg + ' ' + chargerColor}>{chargerLabelText}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-gray-500">
                     <span className="flex items-center gap-1"><FiNavigation className="w-3 h-3 text-gray-400" />{legDist.toFixed(1)} km</span>

@@ -103,31 +103,6 @@ export default function WalletCard() {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
 
-      {/* ---- HEADER: Title + Top Up button ---- */}
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Wallet</h3>
-        <button
-          onClick={function () { setShowTopUp(!showTopUp) }}
-          className={[
-            'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl transition-all',
-            showTopUp
-              ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-              : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-600 hover:to-emerald-700',
-          ].join(' ')}
-        >
-          <FiPlus className="w-3 h-3" />
-          Top Up
-        </button>
-      </div>
-
-      {/* ---- BALANCE DISPLAY ---- */}
-      <div className="text-center mb-5">
-        <p className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 bg-clip-text text-transparent">
-          {formatCurrency(balance)}
-        </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Current Balance</p>
-      </div>
-
       {/* Error loading data */}
       {dataError && (
         <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs rounded-xl">
@@ -135,17 +110,39 @@ export default function WalletCard() {
         </div>
       )}
 
+      {/* ---- BALANCE + TOP UP ---- */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="min-w-0">
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider font-medium mb-0.5">Wallet Balance</p>
+          <p className="text-2xl font-bold bg-gradient-to-r from-emerald-600 to-emerald-500 bg-clip-text text-transparent">
+            {formatCurrency(balance)}
+          </p>
+        </div>
+        <button
+          onClick={function () { setShowTopUp(!showTopUp) }}
+          className={[
+            'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl transition-all shrink-0',
+            showTopUp
+              ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+              : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md shadow-emerald-500/20 hover:from-emerald-600 hover:to-emerald-700',
+          ].join(' ')}
+        >
+          <FiPlus className="w-3 h-3" />
+          Top Up
+        </button>
+      </div>
+
       {/* ---- TOP-UP FORM ---- */}
       {showTopUp && (
-        <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-xl space-y-3 animate-fadeIn">
+        <div className="mb-4 p-3.5 bg-gray-50 dark:bg-gray-900 rounded-xl space-y-3 animate-fadeIn">
           <input
             type="number"
             value={amount}
             onChange={function (e) { setAmount(e.target.value) }}
-            placeholder="Enter amount (max ₹10,000)"
+            placeholder="Enter amount (max \u20B910,000)"
             min="1"
             max="10000"
-            className="w-full px-3.5 py-2.5 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+            className="w-full px-3 py-2.5 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
           />
           <button
             onClick={handleTopUp}
@@ -154,7 +151,7 @@ export default function WalletCard() {
               'w-full py-2.5 text-sm font-medium rounded-xl transition-all',
               isLoading || !amount
                 ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
-                : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-600 hover:to-emerald-700',
+                : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-md shadow-emerald-500/20 hover:from-emerald-600 hover:to-emerald-700',
             ].join(' ')}
           >
             {isLoading ? 'Processing...' : 'Add Money'}
@@ -170,28 +167,33 @@ export default function WalletCard() {
       {/* ---- TRANSACTION HISTORY ---- */}
       {transactions.length > 0 && (
         <div>
-          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-            Recent Transactions
-          </h4>
-          <div className="space-y-1.5 max-h-48 overflow-y-auto">
-            {transactions.slice(0, 10).map(function (tx) {
+          <div className="flex items-center justify-between mb-2.5">
+            <h4 className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Recent Activity</h4>
+            {transactions.length > 0 && (
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">{transactions.length} transaction{transactions.length !== 1 ? 's' : ''}</span>
+            )}
+          </div>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {transactions.slice(0, 5).map(function (tx) {
               var TxIcon = getTransactionIcon(tx.transaction_type).icon
               var iconColor = getTransactionIcon(tx.transaction_type).color
               var amountColor = getTransactionColor(tx.transaction_type)
               var isDeduction = tx.transaction_type === 'DEDUCTION'
 
               return (
-                <div key={tx.id} className="flex items-center justify-between py-2 px-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
-                  <div className="flex items-center gap-2.5">
-                    <TxIcon className={'w-4 h-4 ' + iconColor} />
-                    <div>
-                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                <div key={tx.id} className="flex items-center justify-between py-2 px-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={'w-7 h-7 rounded-lg flex items-center justify-center ' + (isDeduction ? 'bg-orange-50 dark:bg-orange-900/20' : 'bg-emerald-50 dark:bg-emerald-900/20')}>
+                      <TxIcon className={'w-3.5 h-3.5 ' + iconColor} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate max-w-[180px]">
                         {tx.description || tx.transaction_type}
                       </p>
                       <p className="text-[10px] text-gray-400 dark:text-gray-500">{formatDate(tx.created_at)}</p>
                     </div>
                   </div>
-                  <span className={'text-xs font-semibold ' + amountColor}>
+                  <span className={'text-xs font-semibold shrink-0 ' + amountColor}>
                     {isDeduction ? '-' : '+'}{'\u20B9'}{parseFloat(tx.amount).toFixed(2)}
                   </span>
                 </div>

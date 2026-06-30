@@ -10,7 +10,15 @@ export default function NotificationDropdown(props) {
 
   function handleClick(n) {
     if (!n.is_read) markAsRead(n.id)
-    if (n.link) navigate(n.link)
+    if (n.link) { navigate(n.link); props.onClose(); return }
+    if (n.notification_type === 'TRIP' && n.data && n.data.trip_id) {
+      navigate('/trips', { state: { tripId: n.data.trip_id } })
+    } else if (n.notification_type === 'TRIP') {
+      navigate('/trips')
+    }
+    if (n.notification_type === 'BOOKING' && n.data && n.data.booking_id) {
+      navigate('/dashboard')
+    }
     props.onClose()
   }
 
@@ -62,8 +70,8 @@ export default function NotificationDropdown(props) {
               onClick={function () { handleClick(n) }}
               className={'flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-800/50 border-b border-gray-50 dark:border-gray-800/50 ' + (!n.is_read ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : '')}
             >
-              <div className={'mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ' + getBgColor(n.notification_type)}>
-                <NotificationIcon type={n.notification_type} className="w-4 h-4" />
+              <div className={'mt-0.5 w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ' + getBgColor(n.notification_type, n.title)}>
+                <NotificationIcon type={n.notification_type} title={n.title} className="w-4 h-4" />
               </div>
 
               <div className="flex-1 min-w-0">
@@ -111,7 +119,14 @@ export default function NotificationDropdown(props) {
   )
 }
 
-function getBgColor(type) {
+function getBgColor(type, title) {
+  if (type === 'TRIP' && title) {
+    var t = title.toLowerCase()
+    if (t.indexOf('planned') !== -1) return 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+    if (t.indexOf('started') !== -1) return 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'
+    if (t.indexOf('completed') !== -1) return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+    if (t.indexOf('stop') !== -1) return 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+  }
   var map = {
     INFO: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
     SUCCESS: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400',

@@ -20,6 +20,21 @@ export function formatDistance(km) {
   return km.toFixed(1) + ' km'
 }
 
+export function formatDuration(seconds) {
+  if (!seconds || seconds <= 0) return '0m'
+  var h = Math.floor(seconds / 3600)
+  var m = Math.round((seconds % 3600) / 60)
+  return h > 0 ? h + 'h ' + m + 'm' : m + 'm'
+}
+
+export function chargerLabel(slotType) {
+  if (slotType === 'DC_ULTRA') return 'DC Ultra'
+  if (slotType === 'DC_FAST') return 'DC Fast'
+  if (slotType === 'AC_FAST') return 'AC Fast'
+  if (slotType === 'AC_SLOW') return 'AC Slow'
+  return slotType || 'Charger'
+}
+
 export function formatHours(value) {
   var h = Math.floor(value)
   var m = Math.round((value - h) * 60)
