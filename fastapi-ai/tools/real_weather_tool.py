@@ -2,12 +2,13 @@ import logging
 
 import httpx
 
+from config import settings
 from tools.base import BaseTool
 from tools.context import auth_token_var
 
 logger = logging.getLogger(__name__)
 
-DJANGO_BASE = 'http://django:8000'
+DJANGO_BASE = settings.DJANGO_BASE
 DJANGO_TIMEOUT = 15
 
 
@@ -42,6 +43,8 @@ class RealWeatherTool(BaseTool):
         location = kwargs.get('location', '').strip()
         weather_type = kwargs.get('type', 'current')
 
+        logger.info('WeatherTool kwargs received: %s', kwargs)
+
         if not location:
             return {'error': True, 'message': 'Please tell me which city you want weather for.'}
 
@@ -50,7 +53,7 @@ class RealWeatherTool(BaseTool):
         if token:
             headers['Authorization'] = f'Bearer {token}'
 
-        # Get city weather first (provides coords + current conditions)
+        logger.info('WeatherTool: DJANGO_BASE=%s', DJANGO_BASE)
         logger.info('WeatherTool: fetching city weather for "%s"', location)
         city_data = await self._call_city_api(location, headers)
         if city_data is None:
@@ -87,50 +90,52 @@ class RealWeatherTool(BaseTool):
         return city_data
 
     async def _call_city_api(self, location: str, headers: dict) -> dict | None:
+        url = f'{DJANGO_BASE}/api/weather/city/'
+        params = {'city': location}
+        logger.info('WeatherTool HTTP GET %s params=%s', url, params)
         try:
             async with httpx.AsyncClient(timeout=DJANGO_TIMEOUT) as client:
-                resp = await client.get(
-                    f'{DJANGO_BASE}/api/weather/city/',
-                    params={'city': location},
-                    headers=headers,
-                )
+                resp = await client.get(url, params=params, headers=headers)
+                logger.info('WeatherTool HTTP status: %s', resp.status_code)
                 resp.raise_for_status()
-                return resp.json()
+                body = resp.json()
+                logger.info('WeatherTool HTTP response: %s', body)
+                return body
         except httpx.HTTPStatusError as e:
-            logger.error('City weather API error (%s): %s', e.response.status_code, e.response.text[:200])
+            logger.exception('WeatherTool city API HTTP error: %s %s', e.response.status_code, e.response.text[:500])
             if e.response.status_code == 502:
                 return None
             return None
         except Exception as e:
-            logger.error('City weather request failed: %s', str(e))
+            logger.exception('WeatherTool city API request failed')
             return None
 
     async def _call_forecast_api(self, lat: float, lng: float, headers: dict) -> list | None:
+        url = f'{DJANGO_BASE}/api/weather/forecast/'
+        params = {'latitude': lat, 'longitude': lng}
+        logger.info('WeatherTool HTTP GET %s params=%s', url, params)
         try:
             async with httpx.AsyncClient(timeout=DJANGO_TIMEOUT) as client:
-                resp = await client.get(
-                    f'{DJANGO_BASE}/api/weather/forecast/',
-                    params={'latitude': lat, 'longitude': lng},
-                    headers=headers,
-                )
+                resp = await client.get(url, params=params, headers=headers)
+                logger.info('WeatherTool HTTP status: %s', resp.status_code)
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get('hourly', [])
         except Exception as e:
-            logger.error('Forecast API request failed: %s', str(e))
+            logger.exception('WeatherTool forecast API request failed')
             return None
 
     async def _call_7day_api(self, lat: float, lng: float, headers: dict) -> list | None:
+        url = f'{DJANGO_BASE}/api/weather/forecast/7-day/'
+        params = {'latitude': lat, 'longitude': lng}
+        logger.info('WeatherTool HTTP GET %s params=%s', url, params)
         try:
             async with httpx.AsyncClient(timeout=DJANGO_TIMEOUT) as client:
-                resp = await client.get(
-                    f'{DJANGO_BASE}/api/weather/forecast/7-day/',
-                    params={'latitude': lat, 'longitude': lng},
-                    headers=headers,
-                )
+                resp = await client.get(url, params=params, headers=headers)
+                logger.info('WeatherTool HTTP status: %s', resp.status_code)
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get('daily', [])
         except Exception as e:
-            logger.error('7-day API request failed: %s', str(e))
+            logger.exception('WeatherTool 7-day API request failed')
             return None

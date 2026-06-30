@@ -2,7 +2,7 @@ import json
 import logging
 import time
 
-from services.openai_service import OpenAIService
+from core.llm import GroqLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class ReasoningService:
     analysis for the final LLM response generator.
     """
 
-    def __init__(self, llm: OpenAIService) -> None:
+    def __init__(self, llm: GroqLLMClient) -> None:
         self._llm = llm
 
     async def reason(

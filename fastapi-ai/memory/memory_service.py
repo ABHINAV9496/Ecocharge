@@ -6,7 +6,7 @@ from typing import Any
 from memory.memory_retriever import build_memory_context
 from memory.memory_store import MemoryStore
 from memory.memory_updater import MemoryUpdater
-from services.openai_service import OpenAIService
+from core.llm import GroqLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class MemoryService:
          merge(user_id, updates) → persist to Redis
     """
 
-    def __init__(self, llm: OpenAIService) -> None:
+    def __init__(self, llm: GroqLLMClient) -> None:
         self._store = MemoryStore()
         self._updater = MemoryUpdater(llm)
 

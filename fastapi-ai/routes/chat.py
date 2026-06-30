@@ -9,7 +9,7 @@ from config import settings
 from memory import MemoryService
 from prompts.system_prompt import SYSTEM_PROMPT
 from schemas import ChatRequest
-from services.openai_service import OpenAIService
+from core.llm import GroqLLMClient
 from services.reasoning_service import ReasoningService
 from tools.context import auth_token_var
 from tools.real_station_tool import RealStationTool
@@ -22,7 +22,7 @@ from utils import extract_user_id, get_logger
 logger = get_logger(__name__)
 router = APIRouter(prefix='/api', tags=['Chat'])
 
-llm = OpenAIService()
+llm = GroqLLMClient()
 
 # --- Build registry ---
 registry = ToolRegistry()
@@ -102,10 +102,10 @@ async def chat(body: ChatRequest):
     if not body.message.strip():
         raise HTTPException(status_code=400, detail='Message cannot be empty')
 
-    if not settings.OPENAI_API_KEY:
+    if not settings.GROQ_API_KEY:
         raise HTTPException(
             status_code=503,
-            detail='AI service is not configured. Please set the OPENAI_API_KEY environment variable.',
+            detail='AI service is not configured. Please set the GROQ_API_KEY environment variable.',
         )
 
     # Store auth token for tool execution
@@ -133,7 +133,7 @@ async def chat(body: ChatRequest):
                 'Response complete | input=%d chars | output=%d chars | model=%s',
                 len(body.message),
                 len(full_reply),
-                settings.OPENAI_MODEL,
+                settings.GROQ_MODEL,
             )
             # Fire-and-forget memory update
             asyncio.create_task(
@@ -161,10 +161,10 @@ async def chat_simple(body: ChatRequest):
     if not body.message.strip():
         raise HTTPException(status_code=400, detail='Message cannot be empty')
 
-    if not settings.OPENAI_API_KEY:
+    if not settings.GROQ_API_KEY:
         raise HTTPException(
             status_code=503,
-            detail='AI service is not configured. Please set the OPENAI_API_KEY environment variable.',
+            detail='AI service is not configured. Please set the GROQ_API_KEY environment variable.',
         )
 
     auth_token_var.set(body.token)

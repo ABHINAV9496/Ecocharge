@@ -1,7 +1,7 @@
 import json
 import logging
 
-from services.openai_service import OpenAIService
+from core.llm import GroqLLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ _EXTRACTION_PROMPT = (
 class MemoryUpdater:
     """Analyses a conversation and extracts new/changed preferences."""
 
-    def __init__(self, llm: OpenAIService) -> None:
+    def __init__(self, llm: GroqLLMClient) -> None:
         self._llm = llm
 
     async def extract(

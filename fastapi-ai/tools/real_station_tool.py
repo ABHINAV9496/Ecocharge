@@ -4,12 +4,13 @@ import time
 
 import httpx
 
+from config import settings
 from tools.base import BaseTool
 from tools.context import auth_token_var
 
 logger = logging.getLogger(__name__)
 
-DJANGO_BASE = 'http://django:8000'
+DJANGO_BASE = settings.DJANGO_BASE
 DJANGO_TIMEOUT = 15
 GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search'
 GEOCODING_TIMEOUT = 10
@@ -41,23 +42,16 @@ class RealStationTool(BaseTool):
             'charger_type': {
                 'type': 'string',
                 'enum': ['DC', 'AC', 'DC_FAST', 'DC_ULTRA', 'AC_FAST', 'AC_SLOW', 'any'],
-                'description': (
-                    'DC = DC_FAST (50kW) + DC_ULTRA (150kW+). '
-                    'AC = AC_SLOW (3.3kW) + AC_FAST (7.4kW). Default: any.'
-                ),
+                'description': 'DC = DC_FAST (50kW) + DC_ULTRA (150kW+). AC = AC_SLOW + AC_FAST. Default: any.',
             },
             'connector_type': {
                 'type': 'string',
                 'enum': ['CCS2', 'CHAdeMO', 'Type 2 AC', 'any'],
-                'description': (
-                    'CCS2 = DC fast (common in India). '
-                    'CHAdeMO = older DC standard. '
-                    'Type 2 AC = AC charging. Default: any.'
-                ),
+                'description': 'CCS2 = DC fast (common in India). CHAdeMO = older DC. Type 2 AC = AC. Default: any.',
             },
             'available_only': {
                 'type': 'boolean',
-                'description': 'Only show stations with at least one available (free) charging slot. Default: false.',
+                'description': 'Only show stations with at least one available slot. Default: false.',
             },
             'route_waypoints': {
                 'type': 'array',
@@ -67,27 +61,27 @@ class RealStationTool(BaseTool):
                     'minItems': 2,
                     'maxItems': 2,
                 },
-                'description': (
-                    'List of [latitude, longitude] waypoints along a trip route. '
-                    'Finds stations within a 20km corridor of the route. '
-                    'Use when asking for stations along a planned trip.'
-                ),
+                'description': 'List of [lat, lng] waypoints along a route. Finds stations within 20km corridor.',
             },
             'limit': {
                 'type': 'integer',
-                'description': 'Maximum results to return (1–50). Default: 10.',
+                'description': 'Maximum results (1–50). Default: 10.',
             },
         },
         'required': ['location'],
     }
 
     async def execute(self, **kwargs) -> dict:
+        logger.info('StationTool kwargs received: %s', kwargs)
         location = kwargs.get('location', '').strip()
         charger_type = kwargs.get('charger_type', 'any')
         connector_type = kwargs.get('connector_type', 'any')
         available_only = bool(kwargs.get('available_only', False))
         route_waypoints = kwargs.get('route_waypoints')
         limit = max(1, min(kwargs.get('limit', 10), 50))
+
+        logger.info('StationTool DJANGO_BASE=%s', DJANGO_BASE)
+        logger.info('StationTool location=%s charger=%s connector=%s', location, charger_type, connector_type)
 
         token = auth_token_var.get()
         headers = {}
@@ -96,36 +90,24 @@ class RealStationTool(BaseTool):
 
         start = time.monotonic()
 
-        stations = await self._fetch_stations(
-            location, route_waypoints, headers,
-        )
+        stations = await self._fetch_stations(location, route_waypoints, headers)
         if stations is None:
             elapsed = time.monotonic() - start
             logger.error('StationTool: all API calls failed after %.2fs', elapsed)
             return {
                 'error': True,
-                'message': (
-                    'I could not retrieve charging station information right now. '
-                    'Please try again later.'
-                ),
+                'message': 'I could not retrieve charging station information right now. Please try again later.',
             }
 
         elapsed = time.monotonic() - start
-        logger.info(
-            'StationTool: fetched %d raw stations in %.2fs',
-            len(stations), elapsed,
-        )
+        logger.info('StationTool: fetched %d raw stations in %.2fs', len(stations), elapsed)
 
         if not stations:
             return {
                 'error': True,
-                'message': (
-                    f'I couldn\'t find any charging stations'
-                    f'{" near " + location if location else " along that route"}.'
-                ),
+                'message': f'I couldn\'t find any charging stations{" near " + location if location else " along that route"}.',
             }
 
-        # Resolve user location for distance calculation & filtering context
         user_lat, user_lng = None, None
         if route_waypoints and len(route_waypoints) >= 2:
             user_lat, user_lng = route_waypoints[0]
@@ -134,7 +116,6 @@ class RealStationTool(BaseTool):
             if coords:
                 user_lat, user_lng = coords
 
-        # Enrich with distance
         for s in stations:
             slat = s.get('latitude')
             slng = s.get('longitude')
@@ -143,7 +124,6 @@ class RealStationTool(BaseTool):
             else:
                 s['distance_km'] = None
 
-        # Apply filters
         stations = self._apply_filters(stations, charger_type, connector_type, available_only)
 
         if not stations:
@@ -157,21 +137,11 @@ class RealStationTool(BaseTool):
             msg += f' near {location}.' if location else '.'
             return {'error': True, 'message': msg}
 
-        # Sort: preferred > available > distance
         stations.sort(key=lambda s: self._sort_score(s, charger_type))
-
-        # Limit
         stations = stations[:limit]
-
-        # Mark recommendation (best station)
         stations[0]['recommended'] = True
 
-        logger.info(
-            'StationTool: returning %d/%d stations, recommended=%s',
-            len(stations),
-            len(stations),
-            stations[0]['name'],
-        )
+        logger.info('StationTool: returning %d stations', len(stations))
 
         return {
             'location': location or 'Along route',
@@ -195,18 +165,11 @@ class RealStationTool(BaseTool):
             ],
         }
 
-    # ------------------------------------------------------------------
-    # Fetching
-    # ------------------------------------------------------------------
-
     async def _fetch_stations(
         self, location: str, route_waypoints: list | None, headers: dict,
     ) -> list[dict] | None:
         if route_waypoints and len(route_waypoints) >= 2:
-            logger.info(
-                'StationTool: route search with %d waypoints',
-                len(route_waypoints),
-            )
+            logger.info('StationTool: route search with %d waypoints', len(route_waypoints))
             return await self._search_by_route(route_waypoints, headers)
 
         if not location:
@@ -218,10 +181,7 @@ class RealStationTool(BaseTool):
             return []
 
         lat, lng = coords
-        logger.info(
-            'StationTool: location search at %.4f,%.4f radius=%dkm',
-            lat, lng, DEFAULT_RADIUS,
-        )
+        logger.info('StationTool: location search at %.4f,%.4f radius=%dkm', lat, lng, DEFAULT_RADIUS)
         return await self._search_by_location(lat, lng, headers)
 
     async def _resolve_location(self, location: str) -> tuple[float, float] | None:
@@ -250,81 +210,64 @@ class RealStationTool(BaseTool):
             return None
 
     async def _geocode(self, location: str) -> tuple[float, float] | None:
+        url = GEOCODING_URL
+        params = {'name': location, 'count': 1, 'language': 'en', 'format': 'json'}
+        logger.info('StationTool geocode GET %s params=%s', url, params)
         try:
             async with httpx.AsyncClient(timeout=GEOCODING_TIMEOUT) as client:
-                resp = await client.get(GEOCODING_URL, params={
-                    'name': location,
-                    'count': 1,
-                    'language': 'en',
-                    'format': 'json',
-                })
+                resp = await client.get(url, params=params)
+                logger.info('StationTool geocode HTTP status: %s', resp.status_code)
                 resp.raise_for_status()
                 data = resp.json()
+                logger.info('StationTool geocode response: %s', data)
                 results = data.get('results', [])
                 if not results:
                     return None
-                return results[0]['latitude'], results[0]['longitude']
+                lat, lng = results[0]['latitude'], results[0]['longitude']
+                logger.info('StationTool geocode result: %.4f, %.4f', lat, lng)
+                return lat, lng
         except Exception as e:
-            logger.error('Geocoding failed for %s: %s', location, str(e))
+            logger.exception('StationTool geocode failed for %s', location)
             return None
 
-    async def _search_by_location(
-        self, lat: float, lng: float, headers: dict,
-    ) -> list[dict] | None:
+    async def _search_by_location(self, lat: float, lng: float, headers: dict) -> list[dict] | None:
+        url = f'{DJANGO_BASE}/api/stations/'
+        params = {'lat': lat, 'lng': lng, 'radius': DEFAULT_RADIUS}
+        logger.info('StationTool HTTP GET %s params=%s', url, params)
         try:
             async with httpx.AsyncClient(timeout=DJANGO_TIMEOUT) as client:
-                resp = await client.get(
-                    f'{DJANGO_BASE}/api/stations/',
-                    params={
-                        'lat': lat,
-                        'lng': lng,
-                        'radius': DEFAULT_RADIUS,
-                    },
-                    headers=headers,
-                )
+                resp = await client.get(url, params=params, headers=headers)
+                logger.info('StationTool HTTP status: %s', resp.status_code)
+                logger.info('StationTool HTTP response: %s', resp.text[:2000])
                 resp.raise_for_status()
                 data = resp.json()
                 if isinstance(data, list):
                     return data
                 if isinstance(data, dict) and 'results' in data:
                     return data['results']
-                logger.warning(
-                    'StationTool: unexpected response shape: %s',
-                    type(data).__name__,
-                )
+                logger.warning('StationTool: unexpected response shape: %s', type(data).__name__)
                 return []
         except Exception as e:
-            logger.error('Station list API failed: %s', str(e))
+            logger.exception('StationTool list API failed')
             return None
 
-    async def _search_by_route(
-        self, waypoints: list, headers: dict,
-    ) -> list[dict] | None:
+    async def _search_by_route(self, waypoints: list, headers: dict) -> list[dict] | None:
+        url = f'{DJANGO_BASE}/api/stations/by_route/'
+        body = {'waypoints': waypoints, 'radius': 20}
+        logger.info('StationTool HTTP POST %s body=%s', url, body)
         try:
             async with httpx.AsyncClient(timeout=DJANGO_TIMEOUT) as client:
-                resp = await client.post(
-                    f'{DJANGO_BASE}/api/stations/by_route/',
-                    json={'waypoints': waypoints, 'radius': 20},
-                    headers=headers,
-                )
+                resp = await client.post(url, json=body, headers=headers)
+                logger.info('StationTool HTTP status: %s', resp.status_code)
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get('stations', [])
         except Exception as e:
-            logger.error('Station by-route API failed: %s', str(e))
+            logger.exception('StationTool by-route API failed')
             return None
 
-    # ------------------------------------------------------------------
-    # Filtering
-    # ------------------------------------------------------------------
-
     @staticmethod
-    def _apply_filters(
-        stations: list[dict],
-        charger_type: str,
-        connector_type: str,
-        available_only: bool,
-    ) -> list[dict]:
+    def _apply_filters(stations: list[dict], charger_type: str, connector_type: str, available_only: bool) -> list[dict]:
         result = []
         for s in stations:
             if s.get('status', '').upper() != 'ACTIVE':
@@ -338,39 +281,23 @@ class RealStationTool(BaseTool):
             if charger_type not in ('any', ''):
                 permitted = _CHARGER_SLOT_MAP.get(charger_type, [])
                 if permitted:
-                    matching = [
-                        sl for sl in matching
-                        if sl.get('slot_type', '').upper() in permitted
-                    ]
+                    matching = [sl for sl in matching if sl.get('slot_type', '').upper() in permitted]
 
             if connector_type not in ('any', ''):
                 permitted = _CONNECTOR_SLOT_MAP.get(connector_type, [])
                 if permitted:
-                    matching = [
-                        sl for sl in matching
-                        if sl.get('slot_type', '').upper() in permitted
-                    ]
+                    matching = [sl for sl in matching if sl.get('slot_type', '').upper() in permitted]
 
-            # Store pre-filtered slot list for connector-type inference
             filtered_by_connector = matching
 
             if available_only:
-                matching = [
-                    sl for sl in matching
-                    if sl.get('status', '').upper() == 'AVAILABLE'
-                ]
+                matching = [sl for sl in matching if sl.get('status', '').upper() == 'AVAILABLE']
 
             if not matching:
                 continue
 
-            available = sum(
-                1 for sl in matching if sl.get('status', '').upper() == 'AVAILABLE'
-            )
-            rates = [
-                float(sl['rate_per_kwh'])
-                for sl in matching
-                if sl.get('rate_per_kwh')
-            ]
+            available = sum(1 for sl in matching if sl.get('status', '').upper() == 'AVAILABLE')
+            rates = [float(sl['rate_per_kwh']) for sl in matching if sl.get('rate_per_kwh')]
             conn_types = list(set(
                 _SLOT_TO_CONNECTOR.get(sl.get('slot_type', '').upper(), 'Unknown')
                 for sl in filtered_by_connector
@@ -384,10 +311,6 @@ class RealStationTool(BaseTool):
 
         return result
 
-    # ------------------------------------------------------------------
-    # Sorting
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _sort_score(station: dict, preferred_type: str) -> tuple:
         has_available = station.get('_available_slots', 0) > 0
@@ -398,16 +321,10 @@ class RealStationTool(BaseTool):
         distance = station.get('distance_km') or 99999
         available = station.get('_available_slots', 0)
         return (
-            0 if has_available and has_dc else
-            1 if has_available else
-            2,
+            0 if has_available and has_dc else 1 if has_available else 2,
             -available if has_available else 0,
             distance,
         )
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -423,7 +340,6 @@ class RealStationTool(BaseTool):
         return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
-# Module-level maps
 _CHARGER_SLOT_MAP = {
     'DC': ['DC_FAST', 'DC_ULTRA'],
     'AC': ['AC_SLOW', 'AC_FAST'],

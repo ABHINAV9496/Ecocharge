@@ -5,7 +5,8 @@ from collections.abc import AsyncGenerator
 from agent.tool_registry import ToolRegistry
 from agent.tool_router import ToolRouter
 from agent.tool_executor import ToolExecutor
-from services.openai_service import OpenAIService
+from agent.tool_summarizer import summarize_tool_result
+from core.llm import GroqLLMClient
 from services.reasoning_service import ReasoningService
 from utils import get_logger
 
@@ -29,7 +30,7 @@ class Agent:
 
     def __init__(
         self,
-        llm: OpenAIService,
+        llm: GroqLLMClient,
         registry: ToolRegistry,
         reasoner: ReasoningService | None = None,
     ):
@@ -50,7 +51,7 @@ class Agent:
 
             if routes is None:
                 await self._maybe_reason(messages, tool_results_log)
-                logger.info('Agent: no tool needed — streaming response')
+                logger.info('Agent: no tool needed -- streaming response')
                 async for token in self._llm.generate_stream(messages):
                     yield token
                 return
@@ -78,12 +79,13 @@ class Agent:
                     yield result['message']
                     return
 
-            # Log tool results for reasoning
+            # Log tool results for reasoning (summarized)
             for r, result in zip(routes, results):
+                summary = summarize_tool_result(r['tool_name'], result)
                 tool_results_log.append({
                     'tool': r['tool_name'],
                     'arguments': r['arguments'],
-                    'result': result,
+                    'result': summary,
                 })
 
             # Single assistant message listing all tool_calls
@@ -103,12 +105,13 @@ class Agent:
                 ],
             })
 
-            # Per-tool result messages
+            # Per-tool result messages (summarized for LLM context)
             for r, result in zip(routes, results):
+                summary = summarize_tool_result(r['tool_name'], result)
                 messages.append({
                     'role': 'tool',
                     'tool_call_id': r['tool_call_id'],
-                    'content': json.dumps(result),
+                    'content': json.dumps(summary),
                 })
 
             # Loop back — LLM may call more tools or generate final response

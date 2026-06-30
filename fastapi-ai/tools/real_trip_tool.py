@@ -4,12 +4,13 @@ import time
 
 import httpx
 
+from config import settings
 from tools.base import BaseTool
 from tools.context import auth_token_var
 
 logger = logging.getLogger(__name__)
 
-DJANGO_BASE = 'http://django:8000'
+DJANGO_BASE = settings.DJANGO_BASE
 OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
 GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search'
 GEOCODING_TIMEOUT = 10
@@ -36,85 +37,82 @@ class RealTripTool(BaseTool):
                 'type': 'string',
                 'description': 'Destination city or location name',
             },
-            'vehicle_query': {
+            'vehicle': {
                 'type': 'string',
                 'description': (
                     'Vehicle description the user provided, '
                     'e.g. "Tata Nexon EV" or "My car"'
                 ),
             },
-            'battery_percent': {
+            'battery': {
                 'type': 'number',
-                'description': 'Current battery percentage (0–100)',
+                'description': 'Current battery percentage (0–100). Default: 80.',
             },
             'strategy': {
                 'type': 'string',
                 'enum': ['fastest', 'cheapest'],
-                'description': 'Preferred charging strategy',
+                'description': 'Preferred charging strategy. Default: fastest.',
             },
         },
-        'required': ['origin', 'destination', 'vehicle_query', 'battery_percent'],
+        'required': ['origin', 'destination'],
     }
 
     async def execute(self, **kwargs) -> dict:
+        logger.info('TripTool kwargs received: %s', kwargs)
+
         origin = kwargs.get('origin', '').strip()
         destination = kwargs.get('destination', '').strip()
-        vehicle_query = kwargs.get('vehicle_query', '').strip()
-        battery_percent = kwargs.get('battery_percent')
+        vehicle = kwargs.get('vehicle', '').strip()
+        battery = kwargs.get('battery')
         strategy = kwargs.get('strategy', 'fastest')
         token = auth_token_var.get()
 
+        logger.info('TripTool DJANGO_BASE=%s', DJANGO_BASE)
+        logger.info('TripTool origin=%s destination=%s vehicle=%s battery=%s strategy=%s', origin, destination, vehicle, battery, strategy)
+
         if not origin or not destination:
             return {'error': True, 'message': 'Both origin and destination are required.'}
-        if not vehicle_query:
-            return {'error': True, 'message': 'Please tell me which vehicle you will be using.'}
-        if battery_percent is None:
-            return {'error': True, 'message': 'What is your current battery percentage?'}
 
         strategy_map = {'fastest': 'fastest_time', 'cheapest': 'cheapest_cost'}
         planner_strategy = strategy_map.get(strategy, 'fastest_time')
 
-        # Step 1 — Geocode origin
-        logger.info('Geocoding origin: %s', origin)
+        logger.info('TripTool: geocoding origin=%s', origin)
         origin_coords = await self._geocode(origin)
         if not origin_coords:
             return {'error': True, 'message': f"I couldn't find the location '{origin}'. Please check the spelling and try again."}
 
-        # Step 2 — Geocode destination
-        logger.info('Geocoding destination: %s', destination)
+        logger.info('TripTool: geocoding destination=%s', destination)
         dest_coords = await self._geocode(destination)
         if not dest_coords:
             return {'error': True, 'message': f"I couldn't find the location '{destination}'. Please check the spelling and try again."}
 
-        # Step 3 — OSRM routing
-        logger.info('Fetching OSRM route: %s → %s', origin, destination)
+        logger.info('TripTool: OSRM route %s -> %s', origin, destination)
         osrm_data = await self._osrm_route(origin_coords, dest_coords)
         if osrm_data is None:
             return {'error': True, 'message': "I couldn't find a driving route between those locations. Please try different cities."}
 
         route_coords, total_distance_m, total_duration_s = osrm_data
 
-        # Step 4 — Look up vehicle
-        logger.info('Looking up vehicle: %s', vehicle_query)
-        vehicle_id = await self._resolve_vehicle(vehicle_query, token)
+        logger.info('TripTool: OSRM route: distance=%.2fkm duration=%.1fmin', total_distance_m / 1000, total_duration_s / 60)
+
+        vehicle_id = await self._resolve_vehicle(vehicle, token)
         if vehicle_id is None:
             return {
                 'error': True,
                 'message': (
-                    f"I couldn't find a vehicle matching '{vehicle_query}'. "
+                    f"I couldn't determine your vehicle. "
                     "Please tell me the exact make and model of your EV."
                 ),
             }
 
-        # Step 5 — Call Django Trip Planner
-        logger.info('Calling Django Trip Planner: origin=%s dest=%s vehicle=%s', origin, destination, vehicle_id)
+        logger.info('TripTool: calling planner vehicle=%s battery=%s', vehicle_id, battery)
         plan = await self._call_planner(
             token=token,
             route_coords=route_coords,
             total_distance_m=total_distance_m,
             total_duration_s=total_duration_s,
             vehicle_id=vehicle_id,
-            battery_start_percent=battery_percent,
+            battery_start_percent=battery or 80,
             origin_name=origin,
             dest_name=destination,
         )
@@ -129,47 +127,54 @@ class RealTripTool(BaseTool):
         if 'error' in plan:
             return plan
 
-        # Step 6 — Enrich with vehicle info
-        plan['vehicle_query'] = vehicle_query
+        plan['vehicle_query'] = vehicle
         plan['origin'] = origin
         plan['destination'] = destination
+        plan['strategy'] = strategy
 
         return plan
 
     async def _geocode(self, location: str) -> list[float] | None:
+        url = GEOCODING_URL
+        params = {'name': location, 'count': 1, 'language': 'en', 'format': 'json'}
+        logger.info('TripTool geocode GET %s params=%s', url, params)
         try:
             async with httpx.AsyncClient(timeout=GEOCODING_TIMEOUT) as client:
-                resp = await client.get(GEOCODING_URL, params={
-                    'name': location,
-                    'count': 1,
-                    'language': 'en',
-                    'format': 'json',
-                })
+                resp = await client.get(url, params=params)
+                logger.info('TripTool geocode HTTP status: %s', resp.status_code)
                 resp.raise_for_status()
                 data = resp.json()
+                logger.info('TripTool geocode response: %s', data)
                 results = data.get('results', [])
                 if not results:
+                    logger.warning('TripTool geocode no results for %s', location)
                     return None
-                return [results[0]['latitude'], results[0]['longitude']]
+                lat, lng = results[0]['latitude'], results[0]['longitude']
+                logger.info('TripTool geocode result: %.4f, %.4f', lat, lng)
+                return [lat, lng]
         except Exception as e:
-            logger.error('Geocoding failed for %s: %s', location, str(e))
+            logger.exception('TripTool geocode failed for %s', location)
             return None
 
     async def _osrm_route(
         self, origin: list[float], destination: list[float],
     ) -> tuple[list[list[float]], float, float] | None:
+        url = (
+            f'{OSRM_BASE}/{origin[1]},{origin[0]};'
+            f'{destination[1]},{destination[0]}'
+            '?geometries=geojson&overview=full&steps=true'
+        )
+        logger.info('TripTool OSRM GET %s', url)
         try:
-            url = (
-                f'{OSRM_BASE}/{origin[1]},{origin[0]};'
-                f'{destination[1]},{destination[0]}'
-                '?geometries=geojson&overview=full&steps=true'
-            )
             async with httpx.AsyncClient(timeout=OSRM_TIMEOUT) as client:
                 resp = await client.get(url)
+                logger.info('TripTool OSRM HTTP status: %s', resp.status_code)
                 resp.raise_for_status()
                 data = resp.json()
+                logger.info('TripTool OSRM response code: %s', data.get('code'))
 
             if not data.get('routes'):
+                logger.warning('TripTool OSRM no routes found')
                 return None
 
             route = data['routes'][0]
@@ -188,44 +193,49 @@ class RealTripTool(BaseTool):
                     or int(i % step) == 0
                 ]
 
+            logger.info('TripTool OSRM result: %d points, %.2fkm, %.1fmin', len(coordinates), distance_m / 1000, duration_s / 60)
             return coordinates, distance_m, duration_s
         except Exception as e:
-            logger.error('OSRM routing failed: %s', str(e))
+            logger.exception('TripTool OSRM routing failed')
             return None
 
     async def _resolve_vehicle(self, query: str, token: str) -> str | None:
+        if not query:
+            logger.warning('TripTool no vehicle query provided')
+            return None
+
         query_lower = query.lower().strip()
 
         try:
             headers = {'Authorization': f'Bearer {token}'}
+            url = f'{DJANGO_BASE}/api/vehicles/'
+            logger.info('TripTool vehicle lookup GET %s', url)
             async with httpx.AsyncClient(timeout=DJANGO_TIMEOUT) as client:
-                resp = await client.get(
-                    f'{DJANGO_BASE}/api/vehicles/',
-                    headers=headers,
-                )
+                resp = await client.get(url, headers=headers)
+                logger.info('TripTool vehicle lookup HTTP status: %s', resp.status_code)
                 if resp.status_code == 401:
                     logger.warning('Auth failed resolving vehicle')
                     return await self._fallback_vehicle_lookup(query_lower)
                 resp.raise_for_status()
                 vehicles = resp.json()
+                logger.info('TripTool vehicles response: %d vehicles', len(vehicles) if isinstance(vehicles, list) else 0)
 
             if not vehicles:
                 return None
 
-            # Best-effort match: check make, model, or combined
             for v in vehicles:
                 make_model = f"{v.get('make', '')} {v.get('model', '')}".lower()
                 make = v.get('make', '').lower()
                 model = v.get('model', '').lower()
                 vid = v.get('id', '')
                 if query_lower in make_model or query_lower in make or query_lower in model:
+                    logger.info('TripTool matched vehicle: %s -> %s', query_lower, vid)
                     return vid
 
-            # No match — return first vehicle as fallback
-            logger.warning('No vehicle match for "%s", returning first available', query)
+            logger.warning('TripTool no vehicle match for "%s", returning first', query)
             return vehicles[0].get('id')
         except Exception as e:
-            logger.error('Vehicle lookup failed: %s', str(e))
+            logger.exception('TripTool vehicle lookup failed')
             return await self._fallback_vehicle_lookup(query_lower)
 
     async def _call_planner(
@@ -246,9 +256,10 @@ class RealTripTool(BaseTool):
             'vehicle_id': vehicle_id,
             'battery_start_percent': battery_start_percent,
             'origin_name': origin_name,
-            'dest_name': destination,
+            'dest_name': dest_name,
         }
-        logger.info('Planner request: vehicle=%s battery=%s%% strategy=%s', vehicle_id, battery_start_percent, 'fastest_time')
+        url = f'{DJANGO_BASE}/api/trips/plan/'
+        logger.info('TripTool planner POST %s body=%s', url, json.dumps(body, default=str)[:1000])
 
         try:
             headers = {
@@ -257,13 +268,10 @@ class RealTripTool(BaseTool):
             }
             start = time.monotonic()
             async with httpx.AsyncClient(timeout=DJANGO_TIMEOUT) as client:
-                resp = await client.post(
-                    f'{DJANGO_BASE}/api/trips/plan/',
-                    json=body,
-                    headers=headers,
-                )
+                resp = await client.post(url, json=body, headers=headers)
             elapsed = time.monotonic() - start
-            logger.info('Planner responded in %.2fs with status %s', elapsed, resp.status_code)
+            logger.info('TripTool planner HTTP status: %s (%.2fs)', resp.status_code, elapsed)
+            logger.info('TripTool planner response: %s', resp.text[:2000])
 
             if resp.status_code == 401:
                 return {'error': True, 'message': 'Your session has expired. Please log in again to plan a trip.'}
@@ -272,19 +280,18 @@ class RealTripTool(BaseTool):
                 logger.warning('Planner validation error: %s', detail)
                 return {'error': True, 'message': f'The trip planner returned an error: {detail}'}
             if resp.status_code == 404:
-                return {'error': True, 'message': "I couldn't find the selected vehicle in your profile. Please check your vehicles in the dashboard."}
+                return {'error': True, 'message': "I couldn't find the selected vehicle in your profile."}
 
             resp.raise_for_status()
             return resp.json()
         except httpx.TimeoutException:
-            logger.error('Planner request timed out')
+            logger.exception('TripTool planner request timed out')
             return None
         except Exception as e:
-            logger.error('Planner request failed: %s', str(e))
+            logger.exception('TripTool planner request failed')
             return None
 
     async def _fallback_vehicle_lookup(self, query: str) -> str | None:
-        """Return a best-effort vehicle ID from a built-in dictionary."""
         common = {
             'tata nexon': 'tata-nexon-ev-2023',
             'nexon': 'tata-nexon-ev-2023',
@@ -317,5 +324,6 @@ class RealTripTool(BaseTool):
         }
         for key, vid in common.items():
             if key in query:
+                logger.info('TripTool fallback vehicle match: %s -> %s', query, vid)
                 return vid
         return None
