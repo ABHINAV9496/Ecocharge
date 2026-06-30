@@ -28,19 +28,22 @@ export function AIProvider(props) {
   var sendMessage = useCallback(async function (text) {
     if (!text.trim() || isStreaming) return
 
+    var userMsgId = 'msg-' + Date.now()
+    var assistantMsgId = 'msg-' + (Date.now() + 1)
+
     var userMessage = {
-      id: 'msg-' + Date.now(),
+      id: userMsgId,
       role: 'user',
       content: text,
     }
 
-    var assistantMessage = {
-      id: 'msg-' + (Date.now() + 1),
+    var assistantPlaceholder = {
+      id: assistantMsgId,
       role: 'assistant',
       content: '',
     }
 
-    setMessages(function (prev) { return prev.concat([userMessage]) })
+    setMessages(function (prev) { return prev.concat([userMessage, assistantPlaceholder]) })
     setIsStreaming(true)
     setStreamingContent('')
 
@@ -52,18 +55,19 @@ export function AIProvider(props) {
         .filter(function (m) { return m.id !== 'welcome' })
         .map(function (m) { return { role: m.role, content: m.content } })
 
-      var response = await sendChatMessage(text, history)
-
+      var response = await sendChatMessage(text, history, abortController.signal)
       var reader = response.body.getReader()
       var decoder = new TextDecoder()
       var fullContent = ''
+      var buffer = ''
 
       while (true) {
         var result = await reader.read()
         if (result.done) break
 
-        var chunk = decoder.decode(result.value, { stream: true })
-        var lines = chunk.split('\n')
+        buffer += decoder.decode(result.value, { stream: true })
+        var lines = buffer.split('\n')
+        buffer = lines.pop()
 
         for (var i = 0; i < lines.length; i++) {
           var line = lines[i].trim()
@@ -77,32 +81,32 @@ export function AIProvider(props) {
       }
 
       setMessages(function (prev) {
-        var updated = prev.slice(0, -1)
-        return updated.concat([{
-          id: assistantMessage.id,
-          role: 'assistant',
-          content: fullContent,
-        }])
+        return prev.map(function (m) {
+          if (m.id === assistantMsgId) {
+            return { id: m.id, role: 'assistant', content: fullContent }
+          }
+          return m
+        })
       })
       setStreamingContent('')
     } catch (err) {
       if (err.name === 'AbortError') return
+      console.error('Chat error:', err)
 
-      var errorReply = 'Sorry, I couldn\'t process your request. Please check your connection and try again.'
       setMessages(function (prev) {
-        var updated = prev.slice(0, -1)
-        return updated.concat([{
-          id: assistantMessage.id,
-          role: 'assistant',
-          content: errorReply,
-        }])
+        return prev.map(function (m) {
+          if (m.id === assistantMsgId) {
+            return { id: m.id, role: 'assistant', content: 'Sorry, I couldn\'t process your request. Please check your connection and try again.' }
+          }
+          return m
+        })
       })
       setStreamingContent('')
     } finally {
       setIsStreaming(false)
       abortRef.current = null
     }
-  }, [isStreaming])
+  }, [isStreaming, messages])
 
   function clearChat() {
     setMessages([WELCOME_MESSAGE])

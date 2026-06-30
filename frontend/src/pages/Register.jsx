@@ -24,6 +24,7 @@ import { Link } from 'react-router-dom'
 import { FiBatteryCharging, FiUser, FiMail, FiLock, FiSmartphone, FiTruck, FiArrowRight } from 'react-icons/fi'
 import { useAuth } from '../context/AuthContext'
 import { register as registerApi, login as loginApi } from '../api/auth'
+import { getVehicles } from '../api/vehicles'
 
 export default function Register() {
   // All the form fields in one object
@@ -41,6 +42,8 @@ export default function Register() {
   var [errorMessage, setErrorMessage] = useState('')
   var [isLoading, setIsLoading] = useState(false)
   var [welcomeMessage, setWelcomeMessage] = useState('')
+  var [vehicles, setVehicles] = useState([])
+  var [vehicleMode, setVehicleMode] = useState('select')
   var redirectTimerRef = useRef(null)
 
   // Update a single field in the form when the user types
@@ -50,7 +53,15 @@ export default function Register() {
     setForm(updatedForm)
   }
 
-  // Called when the form is submitted
+  // Fetch available vehicles when the user selects Driver role
+  useEffect(function () {
+    if (form.role === 'DRIVER') {
+      getVehicles().then(function (res) {
+        setVehicles(res.data || [])
+      }).catch(function () { })
+    }
+  }, [form.role])
+
   // Clean up the redirect timer on unmount
   useEffect(function () {
     return function () {
@@ -281,19 +292,58 @@ export default function Register() {
               <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
                 Vehicle Information
               </h3>
-              <div className="grid grid-cols-2 gap-3">
-                {/* Car Model */}
+              <div className="space-y-3">
+                {/* Car Model — select from built-in list or enter manually */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Car Model</label>
                   <div className="relative">
-                    <FiTruck className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={form.car_model}
-                      onChange={function (e) { updateField('car_model', e.target.value) }}
-                      placeholder="e.g. Tata Nexon EV"
-                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-                    />
+                    <FiTruck className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
+                    {vehicleMode === 'select' ? (
+                      <select
+                        value={form.car_model}
+                        onChange={function (e) {
+                          var val = e.target.value
+                          if (val === '__custom__') {
+                            setVehicleMode('custom')
+                            return
+                          }
+                          updateField('car_model', val)
+                          var selected = vehicles.find(function (v) {
+                            return (v.make + ' ' + v.model) === val
+                          })
+                          if (selected) {
+                            updateField('battery_capacity_kwh', selected.battery_kwh)
+                          }
+                        }}
+                        className="w-full pl-10 pr-10 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all appearance-none cursor-pointer"
+                      >
+                        <option value="">Select your vehicle</option>
+                        {vehicles.filter(function (v) { return v.is_builtin }).map(function (v) {
+                          var label = v.make + ' ' + v.model + ' (' + v.year + ')'
+                          return (
+                            <option key={v.id} value={v.make + ' ' + v.model}>{label}</option>
+                          )
+                        })}
+                        <option value="__custom__">Other / Add my own vehicle</option>
+                      </select>
+                    ) : (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={form.car_model}
+                          onChange={function (e) { updateField('car_model', e.target.value) }}
+                          placeholder="e.g. Tata Nexon EV"
+                          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                        />
+                        <button
+                          type="button"
+                          onClick={function () { setVehicleMode('select') }}
+                          className="px-3 py-2.5 text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 border border-gray-300 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors whitespace-nowrap"
+                        >
+                          Browse
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
