@@ -4,6 +4,7 @@ class Booking(models.Model):
     class Status(models.TextChoices):
         PENDING = 'PENDING', 'Pending'
         CONFIRMED = 'CONFIRMED', 'Confirmed'
+        IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
         CANCELLED = 'CANCELLED', 'Cancelled'
         COMPLETED = 'COMPLETED', 'Completed'
 

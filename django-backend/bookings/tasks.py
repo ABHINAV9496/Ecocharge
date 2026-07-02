@@ -1,5 +1,6 @@
 from celery import shared_task
 from django.utils import timezone
+from django.db import transaction
 from .models import Booking
 
 
@@ -25,17 +26,35 @@ def send_booking_confirmation(booking_id):
 
 @shared_task
 def auto_cancel_expired_bookings():
+    from notifications.helpers import create_notification
+    from datetime import timedelta
+
     now = timezone.now()
+    cutoff = now - timedelta(minutes=15)
     expired_bookings = Booking.objects.filter(
-        status='CONFIRMED',
-        end_time__lt=now
+        status__in=['CONFIRMED', 'IN_PROGRESS'],
+        end_time__lt=cutoff
     )
-    cancelled_count = 0
+    processed_count = 0
     for booking in expired_bookings:
-        booking.status = 'COMPLETED'
-        booking.save()
-        cancelled_count += 1
-    return f"Marked {cancelled_count} bookings as completed"
+        with transaction.atomic():
+            slot = booking.slot
+            slot.status = 'AVAILABLE'
+            slot.save()
+
+            booking.status = 'COMPLETED'
+            booking.save()
+
+        create_notification(
+            user=booking.driver,
+            notification_type='BOOKING',
+            title='Slot Released Automatically',
+            message=f'Your booking at {booking.slot.station.name} has been completed and the slot is now available.',
+            link=f'/bookings',
+        )
+
+        processed_count += 1
+    return f"Processed {processed_count} expired bookings"
 
 
 @shared_task
