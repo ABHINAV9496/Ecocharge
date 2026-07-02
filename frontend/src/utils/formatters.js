@@ -27,6 +27,21 @@ export function formatDuration(seconds) {
   return h > 0 ? h + 'h ' + m + 'm' : m + 'm'
 }
 
+export function formatDurationDays(totalSeconds, overnightStops) {
+  if (!totalSeconds || totalSeconds <= 0) return '0m'
+  var overnights = overnightStops || 0
+  if (overnights > 0) {
+    var overnightSeconds = overnights * 8 * 3600
+    var activeSeconds = totalSeconds - overnightSeconds
+    var h = Math.floor(activeSeconds / 3600)
+    var m = Math.round((activeSeconds % 3600) / 60)
+    var days = overnights + 1
+    var label = days + ' day' + (days > 1 ? 's' : '') + ' ' + h + 'h ' + m + 'm'
+    return label + ' (incl. ' + overnights + ' overnight stop' + (overnights > 1 ? 's' : '') + ')'
+  }
+  return formatDuration(totalSeconds)
+}
+
 export function chargerLabel(slotType) {
   if (slotType === 'DC_ULTRA') return 'DC Ultra'
   if (slotType === 'DC_FAST') return 'DC Fast'

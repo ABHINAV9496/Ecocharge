@@ -28,6 +28,26 @@ export function createBooking(data) {
   return apiClient.post('/api/bookings/create/', data)
 }
 
+// Start charging (driver marks session as in-progress)
+export function startCharging(id) {
+  return apiClient.patch('/api/bookings/' + id + '/start/')
+}
+
+// Complete charging (driver ends session)
+export function completeCharging(id) {
+  return apiClient.patch('/api/bookings/' + id + '/complete/')
+}
+
+// Owner force-complete a booking on their station
+export function ownerCompleteBooking(id) {
+  return apiClient.patch('/api/bookings/' + id + '/owner-complete/')
+}
+
+// Owner mark a booking as no-show
+export function ownerNoShowBooking(id) {
+  return apiClient.patch('/api/bookings/' + id + '/owner-no-show/')
+}
+
 // Get heatmap data for the map — returns station usage intensity
 // Accepts optional days parameter (default: 90)
 export function getHeatmapData(days) {
