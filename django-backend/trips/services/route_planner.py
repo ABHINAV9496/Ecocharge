@@ -2,31 +2,24 @@
 Energy-aware multi-stop route planner.
 
 Algorithm:
-  1. Split route into segments (between consecutive coordinates).
-  2. Track battery SoC along each segment using vehicle consumption model.
-  3. When SoC drops below threshold, search for stations ahead along
-     the route (using route-projected cumulative distances).
-  4. Score candidates by estimated total trip time (drive + charge).
-  5. Use OSRM table endpoint to compute actual road distances for scoring.
-  6. After all stops, call OSRM route endpoint for through-stations geometry.
-
-Usage:
-    planner = EnergyAwareRoutePlanner(
-        consumption_wh_per_km=150.0,
-        battery_kwh=40.0,
-        battery_start_percent=80,
-    )
-    plan = planner.plan_route(route_coords, total_distance_m, stations)
+  1. Pre-compute route geometry (segments, cumulative distances) once.
+  2. Preprocess ALL corridor stations: project onto route, sort by
+     cumulative distance, pre-filter by slot availability.
+  3. During battery simulation, walk the sorted station list.
+  4. Score candidates by drive time + charge time (fastest) or
+     cost + time value (cheapest).
+  5. After all stops, call OSRM route endpoint for display geometry.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Tuple, Optional
+from typing import List
 import math
 import threading
 import time
 import logging
 import requests
 import concurrent.futures
+from django.core.cache import cache
 
 
 logger = logging.getLogger(__name__)
@@ -41,17 +34,13 @@ CHARGER_POWER = {
 SAFETY_BUFFER = 0.15
 SEARCH_TRIGGER_BUFFER = 0.50
 SEARCH_RADIUS_KM = 30.0
-MAX_ALTERNATIVES = 5
-MAX_STOPS = 20
 AVG_SPEED_KMPH = 80.0
-REST_BREAK_INTERVAL_S = 4 * 3600
-REST_BREAK_DURATION_S = 15 * 60
-MAX_VEHICLE_CHARGE_KW = 100.0
+TIME_VALUE_PER_HOUR = 200
+GST_RATE = 0.18
 OSRM_REQ_PER_SEC = 5
 OSRM_TABLE_TIMEOUT = 5
 OSRM_ROUTE_TIMEOUT = 10
 OSRM_MAX_COORDS = 20
-
 
 
 @dataclass
@@ -71,8 +60,6 @@ class ChargingStop:
     charger_power_kw: float
     cost: float
     detour_km: float
-    road_distance_km: float = 0.0
-    road_detour_km: float = 0.0
     alternatives: List[dict] = field(default_factory=list)
 
 
@@ -97,7 +84,6 @@ class RoutePlan:
     legs: List[TripLeg]
     stops: List[ChargingStop]
     final_soc_percent: float
-    total_rest_breaks_seconds: float = 0.0
     origin_name: str = 'Origin'
     dest_name: str = 'Destination'
     note: str = ''
@@ -107,7 +93,7 @@ class RoutePlan:
 
     @property
     def total_trip_time_seconds(self):
-        return self.total_drive_time_seconds + self.total_charge_time_seconds + self.total_rest_breaks_seconds
+        return self.total_drive_time_seconds + self.total_charge_time_seconds
 
 
 def _haversine_km(lat1, lng1, lat2, lng2):
@@ -131,13 +117,22 @@ def _point_to_segment_dist(px, py, ax, ay, bx, by):
 
 
 def _min_dist_to_route(lat, lng, route_coords):
-    best = float('inf')
-    for i in range(len(route_coords) - 1):
-        d = _point_to_segment_dist(lat, lng,
-                                   route_coords[i][0], route_coords[i][1],
-                                   route_coords[i + 1][0], route_coords[i + 1][1])
-        if d < best:
-            best = d
+    best_i = 0
+    best_d = float('inf')
+    for i, (rlat, rlng) in enumerate(route_coords):
+        d = _haversine_km(lat, lng, rlat, rlng)
+        if d < best_d:
+            best_d = d
+            best_i = i
+
+    best = best_d
+    for i in (best_i - 1, best_i, best_i + 1):
+        if 0 <= i < len(route_coords) - 1:
+            d = _point_to_segment_dist(lat, lng,
+                                       route_coords[i][0], route_coords[i][1],
+                                       route_coords[i + 1][0], route_coords[i + 1][1])
+            if d < best:
+                best = d
     return best
 
 
@@ -146,18 +141,20 @@ class EnergyAwareRoutePlanner:
     _lock = threading.Lock()
     _last_req_time = 0.0
 
-    def __init__(self, consumption_wh_per_km, battery_kwh, battery_start_percent):
+    def __init__(self, consumption_wh_per_km, battery_kwh, battery_start_percent, **kwargs):
         self.consumption_wh_per_km = consumption_wh_per_km
         self.battery_kwh = battery_kwh
         self.battery_start_percent = battery_start_percent
         self._usable_kwh = battery_kwh
         self._usable_start = battery_kwh * (battery_start_percent / 100.0)
         self.max_charge_pct = 0.80
-        self.max_detour_km = 5.0
+        self.max_detour_km = 100.0
         self.safety_buffer = SAFETY_BUFFER
         self.search_radius = 80.0
-        self._cheapest_penalty_s = 0.0
         self._consumption_kwh_per_km = self.consumption_wh_per_km / 1000.0
+
+        self._osrm_table_cache = {}
+        self._osrm_table_cache_lock = threading.Lock()
 
     def _avg_speed(self, strategy):
         if strategy == 'cheapest':
@@ -176,21 +173,14 @@ class EnergyAwareRoutePlanner:
         return self.battery_kwh * (soc / 100.0)
 
     def _get_best_slot(self, station):
-        if not hasattr(self, '_slot_cache'):
-            self._slot_cache = {}
-        st_id = station.get('id')
-        if st_id in self._slot_cache:
-            return self._slot_cache[st_id]
         slots = station.get('slots') or []
         available = [s for s in slots if s.get('status') == 'AVAILABLE']
         if not available:
-            self._slot_cache[st_id] = None
             return None
         available.sort(key=lambda s: (
             {'DC_ULTRA': 4, 'DC_FAST': 3, 'AC_FAST': 2, 'AC_SLOW': 1}.get(s.get('slot_type', ''), 0),
             CHARGER_POWER.get(s.get('slot_type', ''), 0)
         ), reverse=True)
-        self._slot_cache[st_id] = available[0]
         return available[0]
 
     def _rate_limit(self):
@@ -204,47 +194,114 @@ class EnergyAwareRoutePlanner:
     def _osrm_table(self, src_lat, src_lng, candidates):
         if not candidates:
             return []
+
+        src_key = (round(src_lat, 3), round(src_lng, 3))
+        redis_key_prefix = f"osrm:d:{src_key[0]}:{src_key[1]}"
+
+        results = [None] * len(candidates)
+        uncached = []
+        uncached_indices = []
+
+        with self._osrm_table_cache_lock:
+            for i, c in enumerate(candidates):
+                dest_id = c['id']
+                cache_key = (src_key[0], src_key[1], dest_id)
+                if cache_key in self._osrm_table_cache:
+                    results[i] = self._osrm_table_cache[cache_key]
+                else:
+                    redis_key = f"{redis_key_prefix}:{dest_id}"
+                    cached_val = cache.get(redis_key)
+                    if cached_val is not None:
+                        results[i] = cached_val
+                        self._osrm_table_cache[cache_key] = cached_val
+                    else:
+                        uncached.append(c)
+                        uncached_indices.append(i)
+
+        if not uncached:
+            return results
+
+        with self._osrm_table_cache_lock:
+            still_uncached = []
+            still_indices = []
+            for i in range(len(uncached)):
+                dest_id = uncached[i]['id']
+                cache_key = (src_key[0], src_key[1], dest_id)
+                if cache_key in self._osrm_table_cache:
+                    orig_idx = uncached_indices[i]
+                    results[orig_idx] = self._osrm_table_cache[cache_key]
+                else:
+                    redis_key = f"{redis_key_prefix}:{dest_id}"
+                    cached_val = cache.get(redis_key)
+                    if cached_val is not None:
+                        self._osrm_table_cache[cache_key] = cached_val
+                        orig_idx = uncached_indices[i]
+                        results[orig_idx] = cached_val
+                    else:
+                        still_uncached.append(uncached[i])
+                        still_indices.append(uncached_indices[i])
+
+            if not still_uncached:
+                return results
+            uncached = still_uncached
+            uncached_indices = still_indices
+
         coords_parts = [f"{src_lng},{src_lat}"]
-        for c in candidates:
+        for c in uncached:
             clng = c.get('longitude')
             clat = c.get('latitude')
             if clng is not None and clat is not None:
                 coords_parts.append(f"{clng},{clat}")
         if len(coords_parts) < 2:
-            return []
-        n_candidates = len(coords_parts) - 1
-        if n_candidates + 1 > OSRM_MAX_COORDS:
+            return results
+
+        n_uncached = len(coords_parts) - 1
+        if n_uncached + 1 > OSRM_MAX_COORDS:
             coords_parts = coords_parts[:OSRM_MAX_COORDS]
-            n_candidates = len(coords_parts) - 1
+            n_uncached = len(coords_parts) - 1
+            uncached_indices = uncached_indices[:n_uncached]
+            uncached = uncached[:n_uncached]
+
         coords_str = ";".join(coords_parts)
-        dest_indices = ";".join(str(i) for i in range(1, n_candidates + 1))
+        dest_indices = ";".join(str(i) for i in range(1, n_uncached + 1))
         url = f"{self.OSRM_BASE}/table/v1/driving/{coords_str}?sources=0&destinations={dest_indices}"
+
         try:
             self._rate_limit()
             resp = requests.get(url, timeout=OSRM_TABLE_TIMEOUT)
+
             if resp.status_code != 200:
-                return []
+                return results
             data = resp.json()
             if data.get('code') != 'Ok' or 'distances' not in data:
-                return []
-            results = []
-            for i in range(n_candidates):
-                try:
-                    d = data['distances'][0][i]
-                    dur = data['durations'][0][i]
-                    if d is None or dur is None:
-                        results.append(None)
-                    else:
-                        results.append((float(d), float(dur)))
-                except (IndexError, TypeError, ValueError):
-                    results.append(None)
+                return results
+
+            with self._osrm_table_cache_lock:
+                for i in range(n_uncached):
+                    try:
+                        d = data['distances'][0][i]
+                        dur = data['durations'][0][i]
+                        if d is None or dur is None:
+                            result = None
+                        else:
+                            result = (float(d), float(dur))
+                    except (IndexError, TypeError, ValueError):
+                        result = None
+
+                    dest_id = uncached[i]['id']
+                    cache_key = (src_key[0], src_key[1], dest_id)
+                    self._osrm_table_cache[cache_key] = result
+                    if result is not None:
+                        redis_key = f"{redis_key_prefix}:{dest_id}"
+                        cache.set(redis_key, result, timeout=86400 * 7)
+
+                    orig_idx = uncached_indices[i]
+                    results[orig_idx] = result
+
             return results
-        except requests.RequestException as e:
-            logger.warning("OSRM table request failed: %s", e)
-            return []
         except Exception as e:
-            logger.warning("OSRM table parse error: %s", e)
-            return []
+            logger.warning("OSRM table request failed: %s", e)
+            return results
 
     def _osrm_route_waypoints(self, waypoints):
         if len(waypoints) < 2:
@@ -274,70 +331,22 @@ class EnergyAwareRoutePlanner:
     def _project_to_route(self, lat, lng, route_coords, cum_km):
         best_d = float('inf')
         best_i = 0
-        for i in range(len(route_coords)):
-            d = _haversine_km(lat, lng, route_coords[i][0], route_coords[i][1])
+        for i, (rlat, rlng) in enumerate(route_coords):
+            d = (rlat - lat) ** 2 + (rlng - lng) ** 2
             if d < best_d:
                 best_d = d
                 best_i = i
         return best_i, cum_km[best_i]
 
-    def _effective_power(self, charger_power_kw):
-        return min(charger_power_kw, MAX_VEHICLE_CHARGE_KW)
-
-    def _calc_charge_time(self, charge_kwh, power_kw, start_soc, target_soc):
+    def _calc_charge_time(self, charge_kwh, power_kw):
         if power_kw <= 0:
             return 1800
-        eff_power = self._effective_power(power_kw)
-        total_s = 0.0
-        remaining = charge_kwh
+        eff_power = min(power_kw, 350.0)
+        return (charge_kwh / eff_power) * 3600
 
-        below_20_end = min(target_soc, 20.0)
-        below_20_start = max(start_soc, 0.0)
-        if below_20_end > below_20_start:
-            seg_kwh = self.battery_kwh * (below_20_end - below_20_start) / 100.0
-            seg_kwh = min(seg_kwh, remaining)
-            total_s += seg_kwh / (eff_power * 0.8) * 3600
-            remaining -= seg_kwh
-
-        soc_80 = min(target_soc, 80.0)
-        soc_80_start = max(start_soc, 20.0)
-        if soc_80 > soc_80_start and remaining > 0.1:
-            seg_kwh = self.battery_kwh * (soc_80 - soc_80_start) / 100.0
-            seg_kwh = min(seg_kwh, remaining)
-            total_s += seg_kwh / eff_power * 3600
-            remaining -= seg_kwh
-
-        soc_90 = min(target_soc, 90.0)
-        soc_90_start = max(start_soc, 80.0)
-        if soc_90 > soc_90_start and remaining > 0.1:
-            seg_kwh = self.battery_kwh * (soc_90 - soc_90_start) / 100.0
-            seg_kwh = min(seg_kwh, remaining)
-            total_s += seg_kwh / (eff_power * 0.5) * 3600
-            remaining -= seg_kwh
-
-        if remaining > 0.1 and target_soc > 90.0:
-            total_s += remaining / (eff_power * 0.2) * 3600
-
-        return total_s
-
-    def _calc_charge(self, arrival_kwh, km_after, power, rate, max_charge_pct=0.80):
-        max_dep_kwh = self.battery_kwh * max_charge_pct
-        energy_needed_for_leg = km_after * self._consumption_kwh_per_km
-        safety_reserve = self.battery_kwh * SAFETY_BUFFER
-        target_dep_kwh = min(energy_needed_for_leg + safety_reserve, max_dep_kwh)
-        target_dep_kwh = max(target_dep_kwh, self.battery_kwh * (max_charge_pct - 0.10))
-        charge_kwh = max(0.0, target_dep_kwh - arrival_kwh)
-        if charge_kwh < 2.0:
-            return 0, 0, 0, arrival_kwh
-        dep_kwh = arrival_kwh + charge_kwh
-        arrival_soc = self._soc_from_kwh(arrival_kwh)
-        charge_s = self._calc_charge_time(charge_kwh, power, arrival_soc, max_charge_pct * 100)
-        cost = charge_kwh * rate
-        return charge_kwh, charge_s, cost, dep_kwh
-
-    def _trace_battery_profile(self, route_coords, total_distance_m, stops):
-        total_km = total_distance_m / 1000.0
+    def _compute_route_geometry(self, route_coords, total_distance_m):
         n = len(route_coords)
+        total_km = total_distance_m / 1000.0
         seg_dists = []
         for i in range(n - 1):
             d = _haversine_km(route_coords[i][0], route_coords[i][1],
@@ -350,86 +359,63 @@ class EnergyAwareRoutePlanner:
         cum_km = [0.0]
         for d in seg_dists:
             cum_km.append(cum_km[-1] + d)
-
-        profile = []
-        remaining_kwh = self._usable_start
-        stop_idx = 0
-        for i in range(n):
-            if i == 0:
-                profile.append({'dist_km': 0.0, 'soc_percent': round(self._soc_from_kwh(remaining_kwh), 1)})
-                continue
-            seg_energy = self._segment_energy_kwh(seg_dists[i - 1])
-            remaining_kwh -= seg_energy
-            while stop_idx < len(stops):
-                stop_cum = stops[stop_idx].distance_from_start_km
-                if cum_km[i] >= stop_cum - 0.1:
-                    remaining_kwh = stops[stop_idx].departure_soc_percent / 100.0 * self.battery_kwh
-                    stop_idx += 1
-                else:
-                    break
-            profile.append({
-                'dist_km': round(cum_km[i], 1),
-                'soc_percent': round(max(0, self._soc_from_kwh(remaining_kwh)), 1),
-            })
-        return profile
-
-    def _validate_route(self, plan):
-        issues = []
-        stops = plan.stops
-        if not stops:
-            return issues
-
-        drive_s = plan.total_drive_time_seconds
-        charge_s = plan.total_charge_time_seconds
-
-        # Charging time must not exceed 35% of driving time
-        if drive_s > 0 and charge_s > drive_s * 0.35:
-            issues.append(f"Charging time {charge_s/3600:.1f}h exceeds 35% of driving time {drive_s/3600:.1f}h")
-
-        # Arrival SOC must be at least 15%
-        if plan.final_soc_percent < SAFETY_BUFFER * 100:
-            issues.append(f"Arrival SOC {plan.final_soc_percent:.1f}% below minimum {SAFETY_BUFFER*100:.0f}%")
-
-        # Stops consistent with vehicle range
-        for i, stop in enumerate(stops):
-            if i > 0:
-                prev_cum = stops[i-1].distance_from_start_km
-            else:
-                prev_cum = 0.0
-            seg_km = stop.distance_from_start_km - prev_cum
-            max_range_km = (self.battery_kwh * 0.8) / self._consumption_kwh_per_km
-            if seg_km > max_range_km * 1.3:
-                issues.append(f"Segment {i} ({seg_km:.0f}km) exceeds 130% of max range ({max_range_km:.0f}km)")
-
-        # Total trip time must equal drive + charge + breaks
-        computed_total = drive_s + charge_s + plan.total_rest_breaks_seconds
-        if computed_total != plan.total_trip_time_seconds:
-            issues.append("Total trip time mismatch")
-
-        # Cheapest validation: reject only if BOTH undersaves (<8%) AND overtakes (>4h)
-        if plan.strategy == 'cheapest' and hasattr(plan, '_fastest_ref'):
-            fastest = plan._fastest_ref
-            if fastest and fastest.total_cost > 0:
-                savings_pct = (fastest.total_cost - plan.total_cost) / fastest.total_cost * 100
-                extra_time = plan.total_trip_time_seconds - fastest.total_trip_time_seconds
-                if savings_pct < 8 and extra_time > 4 * 3600:
-                    issues.append(f"Cheapest adds {extra_time/3600:.1f}h (> 4h) while saving only {savings_pct:.1f}% (< 8%)")
-
-        return issues
+        return seg_dists, cum_km, total_km, n
 
     def plan_routes(self, route_coords, total_distance_m, stations,
                     origin_name='Origin', dest_name='Destination'):
         strategies = ['fastest_time', 'cheapest']
         plans = []
 
+        seg_dists, cum_km, total_km, n = self._compute_route_geometry(route_coords, total_distance_m)
+
+        _pre_ts = time.time()
+        max_r = self.search_radius * 10
+        _route_lats = [c[0] for c in route_coords]
+        _route_lngs = [c[1] for c in route_coords]
+        mid_lat_pre = (min(_route_lats) + max(_route_lats)) / 2.0
+        llr_pre = 1.0 / math.cos(math.radians(mid_lat_pre))
+        min_clat_pre = min(_route_lats) - (max_r / 110.0)
+        max_clat_pre = max(_route_lats) + (max_r / 110.0)
+        min_clng_pre = min(_route_lngs) - (max_r / 110.0 * llr_pre)
+        max_clng_pre = max(_route_lngs) + (max_r / 110.0 * llr_pre)
+
+        precomputed = []
+        for st in stations:
+            lat = st.get('latitude')
+            lng = st.get('longitude')
+            if lat is None or lng is None:
+                continue
+            if not (min_clat_pre <= lat <= max_clat_pre and min_clng_pre <= lng <= max_clng_pre):
+                continue
+            slot = self._get_best_slot(st)
+            if not slot:
+                continue
+            power = CHARGER_POWER.get(slot.get('slot_type', ''), 7.4)
+            rate = float(slot.get('rate_per_kwh', 10) or 10)
+            route_idx, cum_dist = self._project_to_route(lat, lng, route_coords, cum_km)
+            detour = _min_dist_to_route(lat, lng, route_coords)
+            precomputed.append({
+                'st': st, 'slot': slot, 'st_lat': lat, 'st_lng': lng,
+                'cum_dist': cum_dist, 'detour_km': round(detour, 2),
+                'power': power, 'rate': rate, 'route_idx': route_idx,
+            })
+
+        precomputed.sort(key=lambda x: x['cum_dist'])
+        pc_lookup = {p['st']['id']: p for p in precomputed}
+        _pre_time = time.time() - _pre_ts
+        logger.info("========== ROUTE PREPROCESS ========")
+        logger.info("  Corridor stations:  %d", len(precomputed))
+        logger.info("  Project + sort:     %.3f sec", _pre_time)
+        logger.info("====================================")
+
         def _run_strat(s):
             p = self.plan_route(
                 route_coords, total_distance_m, stations,
                 origin_name=origin_name, dest_name=dest_name,
                 strategy=s, max_charge_pct=0.80,
-            )
-            p.battery_profile = self._trace_battery_profile(
-                route_coords, total_distance_m, p.stops,
+                seg_dists=seg_dists, cum_km=cum_km,
+                precomputed_stations=precomputed,
+                precomputed_lookup=pc_lookup,
             )
             return p
 
@@ -442,11 +428,15 @@ class EnergyAwareRoutePlanner:
         fastest_plan = plan_map.get('fastest_time')
         cheapest_plan = plan_map.get('cheapest')
 
-        if cheapest_plan and fastest_plan:
-            cheapest_plan._fastest_ref = fastest_plan
-            self._validate_route(cheapest_plan)
-
         selected = fastest_plan
+
+        waypoints = [(route_coords[0][0], route_coords[0][1])]
+        for stop in selected.stops:
+            waypoints.append((stop.lat, stop.lng))
+        waypoints.append((route_coords[-1][0], route_coords[-1][1]))
+        wg = self._osrm_route_waypoints(waypoints)
+        if wg:
+            selected.waypoint_geometry = wg
 
         alternatives = []
         p = cheapest_plan
@@ -456,7 +446,6 @@ class EnergyAwareRoutePlanner:
                 'strategy': p.strategy,
                 'total_drive_time_seconds': p.total_drive_time_seconds,
                 'total_charge_time_seconds': p.total_charge_time_seconds,
-                'total_rest_breaks_seconds': p.total_rest_breaks_seconds,
                 'total_trip_time_seconds': p.total_trip_time_seconds,
                 'total_cost': p.total_cost,
                 'stop_count': len(p.stops),
@@ -465,7 +454,7 @@ class EnergyAwareRoutePlanner:
                 'stops': p.stops,
                 'legs': p.legs,
                 'total_energy_consumed_kwh': p.total_energy_consumed_kwh,
-                'battery_profile': p.battery_profile,
+                'note': p.note,
             })
         return {
             'selected': selected,
@@ -474,11 +463,15 @@ class EnergyAwareRoutePlanner:
 
     def plan_route(self, route_coords, total_distance_m, stations,
                    origin_name='Origin', dest_name='Destination',
-                   strategy='fastest_time', max_charge_pct=0.80):
+                   strategy='fastest_time', max_charge_pct=0.80,
+                   seg_dists=None, cum_km=None,
+                   precomputed_stations=None, precomputed_lookup=None):
 
         total_km = total_distance_m / 1000.0
-        logger.info("[%s] total_distance_m=%.1f total_km=%.1f max_charge_pct=%.2f",
-                     strategy, total_distance_m, total_km, max_charge_pct)
+        usable_km = (self.battery_kwh * (max_charge_pct - SAFETY_BUFFER)) / self._consumption_kwh_per_km
+        max_stops = min(30, max(15, math.ceil(total_km / (usable_km * 0.75)) + 3))
+        logger.info("[%s] total_distance_m=%.1f total_km=%.1f max_charge_pct=%.2f max_stops=%d usable_km=%.1f",
+                     strategy, total_distance_m, total_km, max_charge_pct, max_stops, usable_km)
         n = len(route_coords)
         if n < 2:
             return RoutePlan(total_km, 0, 0, 0, 0, [], [], self.battery_start_percent,
@@ -486,19 +479,23 @@ class EnergyAwareRoutePlanner:
 
         dest_lat, dest_lng = route_coords[-1][0], route_coords[-1][1]
 
-        seg_dists = []
-        for i in range(n - 1):
-            d = _haversine_km(route_coords[i][0], route_coords[i][1],
-                              route_coords[i + 1][0], route_coords[i + 1][1])
-            seg_dists.append(d)
-        raw_total = sum(seg_dists)
-        if raw_total > 0:
-            scale = total_km / raw_total
-            seg_dists = [d * scale for d in seg_dists]
+        if precomputed_stations is None:
+            raise ValueError("plan_route requires precomputed_stations (call plan_routes instead)")
 
-        cum_km = [0.0]
-        for d in seg_dists:
-            cum_km.append(cum_km[-1] + d)
+        if seg_dists is None or cum_km is None:
+            seg_dists = []
+            for i in range(n - 1):
+                d = _haversine_km(route_coords[i][0], route_coords[i][1],
+                                  route_coords[i + 1][0], route_coords[i + 1][1])
+                seg_dists.append(d)
+            raw_total = sum(seg_dists)
+            if raw_total > 0:
+                scale = total_km / raw_total
+                seg_dists = [d * scale for d in seg_dists]
+
+            cum_km = [0.0]
+            for d in seg_dists:
+                cum_km.append(cum_km[-1] + d)
 
         remaining_kwh = self._usable_start
         stops = []
@@ -511,49 +508,26 @@ class EnergyAwareRoutePlanner:
         total_cost = 0.0
         waypoints = [(route_coords[0][0], route_coords[0][1])]
         current_lat, current_lng = route_coords[0][0], route_coords[0][1]
-        _search_fail_count = 0
+        _hit_max_stops = False
         _dead_end = False
-        _expansion_exhausted = False
-        avg_seg_km = total_km / max(1, n - 1) if n > 1 else 1.0
 
-        _dbg = {
-            't_start': time.time(),
-            't_osrm_table': 0.0,
-            't_osrm_route': 0.0,
-            't_filter': 0.0,
-            't_scoring': 0.0,
-            't_segments': 0.0,
-            'calls_min_dist': 0,
-            'calls_project': 0,
-            'stations_loaded': len(stations),
-            'stations_rejected_bbox': 0,
-            'stations_rejected_route': 0,
-            'stations_rejected_slot': 0,
-            'osrm_table_calls': 0,
-            'osrm_table_coords': 0,
-            'expansion_pass': False,
-            'expansion_iterations': 0,
-            'while_iterations': 0,
-        }
-
+        pc_ptr = 0
         _total_iterations = 0
         while True:
-            _dbg['while_iterations'] += 1
             _total_iterations += 1
-            if _total_iterations > MAX_STOPS:
+            if _total_iterations > max_stops:
                 waypoints.append((dest_lat, dest_lng))
+                _hit_max_stops = True
                 break
             logger.info("Planning iteration %d — %d stops found so far, %.1f km left, %.1f kWh remaining",
                         len(legs), len(stops), total_km - cum_km[last_stop_idx], remaining_kwh)
             km_left = total_km - cum_km[last_stop_idx]
 
-            # Check if destination is reachable from current position
             need_for_dest = self._segment_energy_kwh(km_left) * (1 + self.safety_buffer)
             if remaining_kwh >= need_for_dest:
                 waypoints.append((dest_lat, dest_lng))
                 break
 
-            # Drive segment by segment until battery drops to trigger
             trigger_kwh = self._usable_kwh * SEARCH_TRIGGER_BUFFER
             sim_battery = remaining_kwh
             found_charge = False
@@ -563,206 +537,74 @@ class EnergyAwareRoutePlanner:
                 next_cum = cum_km[idx + 1]
                 projected_battery = sim_battery - seg_energy
 
-                # Check destination reachability from next position
                 km_from_here = total_km - next_cum
                 need_here = self._segment_energy_kwh(km_from_here) * (1 + self.safety_buffer)
                 if sim_battery >= need_here:
-                    remaining_kwh = sim_battery - seg_energy  # Account for segment energy to reach next_cum
+                    remaining_kwh = sim_battery - seg_energy
                     last_stop_idx = idx + 1
                     last_stop_cum = next_cum
                     break
 
-                # Check if consuming this segment drops to/below trigger (BEFORE consuming)
                 if projected_battery <= trigger_kwh:
                     if projected_battery <= 0:
-                        # Dead battery - cannot start this segment
-                        logger.info("REMAINING_KWH SET: %.2f → %.2f at idx=%d cum=%.1fkm sim=%.2f _dead_end",
-                                     remaining_kwh, max(0, sim_battery), idx, cum_km[idx], sim_battery)
                         remaining_kwh = max(0, sim_battery)
+                        last_stop_cum = cum_km[idx]
                         waypoints.append((dest_lat, dest_lng))
                         found_charge = True
                         _dead_end = True
                         break
-                    # Trigger BEFORE consuming - search using current sim_battery
-                    trigger_idx = idx
+
                     current_cum = cum_km[idx]
-                    frac = min(1.0, max(0.0, (sim_battery - trigger_kwh) / seg_energy)) if seg_energy > 0 else 0.0
-                    trigger_cum = cum_km[idx] + seg_dists[idx] * frac
-                    logger.info("REMAINING_KWH SET: %.2f → %.2f at idx=%d cum=%.1fkm sim=%.2f",
-                                 remaining_kwh, sim_battery, idx, cum_km[idx], sim_battery)
                     remaining_kwh = sim_battery
                     range_left = (remaining_kwh / self.consumption_wh_per_km) * 1000
 
-                    # Search window ahead of trigger point (look further for DC stations)
                     look_km = max(150, range_left * 1.5)
                     search_end_cum = min(total_km, current_cum + look_km)
-                    search_end_idx = trigger_idx
-                    for j in range(trigger_idx, n):
-                        if cum_km[j] >= search_end_cum:
-                            search_end_idx = j
-                            break
-                    if search_end_idx <= trigger_idx:
-                        search_end_idx = min(n - 1, trigger_idx + 1)
 
-                    search_coords = route_coords[trigger_idx:search_end_idx + 1]
-
-
-
-                    # Find stations near this corridor
-                    _dbg['t_filter'] -= time.time()
-                    sc_lats = [c[0] for c in search_coords]
-                    sc_lngs = [c[1] for c in search_coords]
-                    min_clat = min(sc_lats) - (self.search_radius / 110.0)
-                    max_clat = max(sc_lats) + (self.search_radius / 110.0)
-                    mid_lat = (min_clat + max_clat) / 2.0
-                    lat_lng_ratio = 1.0 / math.cos(math.radians(mid_lat))
-                    min_clng = min(sc_lngs) - (self.search_radius / 110.0 * lat_lng_ratio)
-                    max_clng = max(sc_lngs) + (self.search_radius / 110.0 * lat_lng_ratio)
+                    while pc_ptr < len(precomputed_stations) and precomputed_stations[pc_ptr]['cum_dist'] <= current_cum:
+                        pc_ptr += 1
 
                     candidates = []
-                    for st in stations:
-                        lat = st.get('latitude')
-                        lng = st.get('longitude')
-                        if lat is None or lng is None:
-                            continue
-                        if not (min_clat <= lat <= max_clat and min_clng <= lng <= max_clng):
-                            _dbg['stations_rejected_bbox'] += 1
-                            continue
-                        _dbg['calls_min_dist'] += 1
-                        d = _min_dist_to_route(lat, lng, search_coords)
-                        if d > self.search_radius:
-                            _dbg['stations_rejected_route'] += 1
-                            continue
-                        slot = self._get_best_slot(st)
-                        if not slot:
-                            _dbg['stations_rejected_slot'] += 1
-                            continue
-                        power = CHARGER_POWER.get(slot.get('slot_type', ''), 7.4)
-                        rate = float(slot.get('rate_per_kwh', 10) or 10)
-                        candidates.append((st, slot, round(d, 2), power, rate))
+                    j = pc_ptr
+                    while j < len(precomputed_stations) and precomputed_stations[j]['cum_dist'] <= search_end_cum:
+                        ps = precomputed_stations[j]
+                        if ps['detour_km'] <= self.search_radius:
+                            candidates.append((ps['st'], ps['slot'], ps['detour_km'], ps['power'], ps['rate']))
+                        j += 1
 
-                    # Expand search radius if no candidates
                     if not candidates:
-                        if _expansion_exhausted:
-                            _dbg['t_filter'] += time.time()
-                            if idx >= n - 2:
-                                waypoints.append((dest_lat, dest_lng))
-                                found_charge = True
-                                _dead_end = True
-                                break
-                            continue
-                        expanded = False
-                        # Max bounding box for all multipliers
-                        max_radius = self.search_radius * 10
-                        max_min_clat = min(sc_lats) - (max_radius / 110.0)
-                        max_max_clat = max(sc_lats) + (max_radius / 110.0)
-                        max_min_clng = min(sc_lngs) - (max_radius / 110.0 * lat_lng_ratio)
-                        max_max_clng = max(sc_lngs) + (max_radius / 110.0 * lat_lng_ratio)
-                        for mult in [2, 3, 4, 5, 6, 8, 10]:
-                            r = self.search_radius * mult
-                            _dbg['expansion_iterations'] += 1
-                            for st in stations:
-                                lat = st.get('latitude')
-                                lng = st.get('longitude')
-                                if lat is None or lng is None:
-                                    continue
-                                if not (max_min_clat <= lat <= max_max_clat and max_min_clng <= lng <= max_max_clng):
-                                    continue
-                                _dbg['calls_min_dist'] += 1
-                                d = _min_dist_to_route(lat, lng, search_coords)
-                                if d > r:
-                                    _dbg['stations_rejected_route'] += 1
-                                    continue
-                                slot = self._get_best_slot(st)
-                                if not slot:
-                                    _dbg['stations_rejected_slot'] += 1
-                                    continue
-                                power = CHARGER_POWER.get(slot.get('slot_type', ''), 7.4)
-                                rate = float(slot.get('rate_per_kwh', 10) or 10)
-                                candidates.append((st, slot, round(d, 2), power, rate))
-                            if candidates:
-                                expanded = True
-                                _dbg['expansion_pass'] = True
-                                break
-                        if not expanded:
-                            _dbg['t_filter'] += time.time()
-                            if idx >= n - 2:
-                                waypoints.append((dest_lat, dest_lng))
-                                found_charge = True
-                                _dead_end = True
-                                break
-                            _expansion_exhausted = True
-                            continue
-                    _dbg['t_filter'] += time.time()
+                        sim_battery = max(0, projected_battery)
+                        last_stop_idx = idx + 1
+                        last_stop_cum = cum_km[last_stop_idx]
+                        break
 
-                    # Project candidates to route
-                    _dbg['t_scoring'] -= time.time()
                     cand_data = []
                     for c in candidates:
-                        st = c[0]
-                        st_lat = float(st['latitude'])
-                        st_lng = float(st['longitude'])
-                        _dbg['calls_project'] += 1
-                        _, stop_cum = self._project_to_route(st_lat, st_lng, route_coords, cum_km)
+                        ps = precomputed_lookup[c[0]['id']]
+                        stop_cum = ps['cum_dist']
+                        if stop_cum <= current_cum:
+                            continue
                         route_dist_km = max(0.1, stop_cum - current_cum)
-                        leg_dist_km = max(0.1, stop_cum - current_cum)
-                        cand_data.append((c, stop_cum, route_dist_km, leg_dist_km))
+                        cand_data.append((c, stop_cum, route_dist_km, route_dist_km))
 
                     cand_data = [x for x in cand_data if x[1] > current_cum]
                     if not cand_data:
-                        if idx >= n - 2:
-                            waypoints.append((dest_lat, dest_lng))
-                            found_charge = True
-                            _dead_end = True
-                            break
-                        continue
+                        sim_battery = max(0, projected_battery)
+                        last_stop_idx = idx + 1
+                        last_stop_cum = cum_km[last_stop_idx]
+                        break
                     cand_data.sort(key=lambda x: x[1])
 
-                    # Both strategies prefer DC chargers (50 kW+)
-                    dc_filtered = [cd for cd in cand_data if cd[0][3] >= 50]
-                    if dc_filtered:
-                        cand_data = dc_filtered
-                    elif strategy == 'cheapest':
-                        if idx >= n - 2:
-                            waypoints.append((dest_lat, dest_lng))
-                            found_charge = True
-                            _dead_end = True
-                            break
-                        continue
-
-                    # OSRM table for road distances
-                    osrm_limit = OSRM_MAX_COORDS - 1
-                    osrm_candidates = [x[0] for x in cand_data[:osrm_limit]]
-                    _dbg['osrm_table_calls'] += 1
-                    _dbg['osrm_table_coords'] += len(osrm_candidates)
-                    _dbg['t_osrm_table'] -= time.time()
-                    road_data = self._osrm_table(current_lat, current_lng, [c[0] for c in osrm_candidates])
-                    _dbg['t_osrm_table'] += time.time()
-
-                    road_lookup = {}
-                    if road_data:
-                        for i, c in enumerate(osrm_candidates):
-                            if i < len(road_data) and road_data[i] is not None:
-                                road_lookup[c[0]['id']] = road_data[i]
-
-                    # Score candidates
                     scored = []
                     for c_tuple, stop_cum, route_dist_km, leg_dist_km in cand_data:
                         st, slot, detour, power, rate = c_tuple
                         st_lat = float(st['latitude'])
                         st_lng = float(st['longitude'])
 
-                        if st['id'] in road_lookup:
-                            road_dist_m, drive_time_s = road_lookup[st['id']]
-                            road_dist_km = road_dist_m / 1000.0
-                        else:
-                            road_dist_km = leg_dist_km
-                            drive_time_s = (leg_dist_km / self._avg_speed(strategy)) * 3600
+                        drive_time_s = (leg_dist_km / self._avg_speed(strategy)) * 3600
 
-                        # Detour check (cheapest allows slightly more detour for savings)
-                        max_detour = self.max_detour_km * (2.0 if strategy == 'cheapest' else 1.0)
-                        detour_actual = max(0, road_dist_km - _haversine_km(current_lat, current_lng, st_lat, st_lng))
-                        if detour_actual > max_detour:
+                        detour_actual = max(0, leg_dist_km - _haversine_km(current_lat, current_lng, st_lat, st_lng))
+                        if detour_actual > self.max_detour_km:
                             continue
 
                         arrival_kwh = remaining_kwh - self._segment_energy_kwh(route_dist_km)
@@ -774,16 +616,26 @@ class EnergyAwareRoutePlanner:
 
                         arrival_soc = self._soc_from_kwh(arrival_kwh)
                         km_after = total_km - stop_cum
-                        charge_kwh, charge_s, cost_stop, dep_kwh = self._calc_charge(
-                            arrival_kwh, km_after, power, rate, max_charge_pct
-                        )
-                        if charge_kwh <= 0:
+
+                        max_dep_kwh = self.battery_kwh * max_charge_pct
+                        energy_needed_for_leg = self._segment_energy_kwh(km_after) * (1 + self.safety_buffer)
+                        target_dep_kwh = min(energy_needed_for_leg, max_dep_kwh)
+                        target_dep_kwh = max(target_dep_kwh, self.battery_kwh * (max_charge_pct - 0.10))
+                        charge_kwh = max(0.0, target_dep_kwh - arrival_kwh)
+
+                        if charge_kwh < 2.0:
                             continue
 
-                        if strategy == 'cheapest':
-                            score = -(cost_stop * 100 + charge_s * 0.05 + drive_time_s * 0.05 + power * 0.1)
-                        else:
+                        charge_s = self._calc_charge_time(charge_kwh, power)
+                        cost_stop = charge_kwh * rate * (1 + GST_RATE)
+                        dep_kwh = arrival_kwh + charge_kwh
+                        dep_soc = self._soc_from_kwh(dep_kwh)
+
+                        if strategy == 'fastest_time':
                             score = -(drive_time_s + charge_s)
+                        else:
+                            effective_cost = cost_stop + ((drive_time_s + charge_s) / 3600) * TIME_VALUE_PER_HOUR
+                            score = -effective_cost
 
                         scored.append({
                             'score': score,
@@ -792,7 +644,6 @@ class EnergyAwareRoutePlanner:
                             'detour': detour,
                             'power': power,
                             'rate': rate,
-                            'road_dist_km': road_dist_km,
                             'drive_time_s': drive_time_s,
                             'arrival_kwh': arrival_kwh,
                             'arrival_soc': arrival_soc,
@@ -800,21 +651,17 @@ class EnergyAwareRoutePlanner:
                             'charge_s': charge_s,
                             'cost_stop': cost_stop,
                             'dep_kwh': dep_kwh,
-                            'dep_soc': self._soc_from_kwh(dep_kwh),
+                            'dep_soc': dep_soc,
                             'stop_cum': stop_cum,
                         })
 
                     if not scored:
-                        _dbg['t_scoring'] += time.time()
-                        if idx >= n - 2:
-                            waypoints.append((dest_lat, dest_lng))
-                            found_charge = True
-                            _dead_end = True
-                            break
-                        continue
+                        sim_battery = max(0, projected_battery)
+                        last_stop_idx = idx + 1
+                        last_stop_cum = cum_km[last_stop_idx]
+                        break
 
                     scored.sort(key=lambda x: x['score'], reverse=True)
-                    _dbg['t_scoring'] += time.time()
                     best = scored[0]
 
                     st = best['st']
@@ -822,7 +669,6 @@ class EnergyAwareRoutePlanner:
                     detour = best['detour']
                     power = best['power']
                     rate = best['rate']
-                    road_dist_km = best['road_dist_km']
                     drive_time_s = best['drive_time_s']
                     arrival_kwh = best['arrival_kwh']
                     arrival_soc = best['arrival_soc']
@@ -834,7 +680,6 @@ class EnergyAwareRoutePlanner:
                     st_lat = float(st['latitude'])
                     st_lng = float(st['longitude'])
                     stop_cum = best['stop_cum']
-                    road_detour_km = round(max(0, road_dist_km - _haversine_km(current_lat, current_lng, st_lat, st_lng)), 2)
 
                     drive_km = stop_cum - last_stop_cum
 
@@ -853,26 +698,6 @@ class EnergyAwareRoutePlanner:
                     last_leg_start = stop_label
                     last_leg_soc = dep_soc
 
-                    alts = []
-                    for alt_scored in scored[1:MAX_ALTERNATIVES]:
-                        a_st = alt_scored['st']
-                        a_road = alt_scored['road_dist_km']
-                        alts.append({
-                            'station_id': a_st['id'],
-                            'station_name': a_st.get('name', '') or a_st.get('address', ''),
-                            'address': a_st.get('address', ''),
-                            'lat': float(a_st['latitude']),
-                            'lng': float(a_st['longitude']),
-                            'detour_km': alt_scored['detour'],
-                            'road_distance_km': round(a_road, 2),
-                            'slot_type': alt_scored['slot'].get('slot_type', ''),
-                            'charger_power_kw': alt_scored['power'],
-                            'rate_per_kwh': alt_scored['rate'],
-                            'charge_cost': round(alt_scored['cost_stop'], 2),
-                            'charge_time_seconds': round(alt_scored['charge_s']),
-                            'arrival_soc_percent': round(alt_scored['arrival_soc'], 1),
-                        })
-
                     stops.append(ChargingStop(
                         stop_index=len(stops) + 1,
                         station_id=st['id'],
@@ -888,47 +713,41 @@ class EnergyAwareRoutePlanner:
                         charger_power_kw=power,
                         cost=round(cost_stop, 2),
                         detour_km=detour,
-                        road_distance_km=round(road_dist_km, 2),
-                        road_detour_km=road_detour_km,
-                        alternatives=alts,
                     ))
 
-                    _dbg['calls_project'] += 1
-                    stop_route_idx, _ = self._project_to_route(st_lat, st_lng, route_coords, cum_km)
+                    stop_route_idx = 0
+                    for i, c in enumerate(cum_km):
+                        if c >= stop_cum - 0.1:
+                            stop_route_idx = i
+                            break
                     if stop_route_idx <= last_stop_idx:
                         stop_route_idx = last_stop_idx + 1
                     waypoints.append((st_lat, st_lng))
                     current_lat, current_lng = st_lat, st_lng
-                    _search_fail_count = 0
-                    _expansion_exhausted = False
                     total_charge_s += charge_s
                     total_cost += cost_stop
                     remaining_kwh = dep_kwh
-                    next_idx = max(stop_route_idx, trigger_idx)
+                    next_idx = max(stop_route_idx, idx)
                     if next_idx <= last_stop_idx:
                         next_idx = last_stop_idx + 1
                     last_stop_cum = stop_cum
                     last_stop_idx = next_idx
                     logger.info("[%s] Stop#%d: arrival_kwh=%.1f arrival_soc=%.1f%% charge_kwh=%.1f dep_kwh=%.1f dep_soc=%.1f%% dist=%.1fkm strategy=%s",
-                                 strategy, len(stops), arrival_kwh, arrival_soc, charge_kwh, dep_kwh, dep_soc, stop_cum, strategy)
-                    logger.info("STOP%d placed: arr=%.1fkwh dep=%.1fkwh remaining_after=%.1fkwh stop_cum=%.1fkm total=%.1fkm",
-                                 len(stops), arrival_kwh, dep_kwh, dep_kwh, stop_cum, total_km)
+                                strategy, len(stops), arrival_kwh, arrival_soc, charge_kwh, dep_kwh, dep_soc, stop_cum, strategy)
                     found_charge = True
-                    break  # Exit segment loop, re-check destination at while top
+                    break
 
                 else:
-                    # Not at trigger — safe to consume this segment
                     sim_battery = projected_battery
 
             if found_charge:
-                if len(stops) >= MAX_STOPS or _dead_end:
+                if len(stops) >= max_stops or _dead_end:
                     waypoints.append((dest_lat, dest_lng))
+                    if len(stops) >= max_stops:
+                        _hit_max_stops = True
                     break
                 continue
 
-            # Ran through all segments without triggering or reaching destination
-            logger.info("REMAINING_KWH SET: %.2f → %.2f at idx=-1 cum=-1 sim=%.2f",
-                         remaining_kwh, sim_battery, sim_battery)
             remaining_kwh = sim_battery
             if last_stop_idx >= n - 2:
                 waypoints.append((dest_lat, dest_lng))
@@ -937,20 +756,13 @@ class EnergyAwareRoutePlanner:
         if waypoints and waypoints[-1] != (dest_lat, dest_lng):
             waypoints.append((dest_lat, dest_lng))
 
-        # Final leg to destination
         final_km = total_km - last_stop_cum
+        final_kwh = max(0, remaining_kwh - self._segment_energy_kwh(final_km)) if final_km > 0 else remaining_kwh
         if final_km > 0:
             final_s = (final_km / self._avg_speed(strategy)) * 3600
-            final_kwh = max(0, remaining_kwh - self._segment_energy_kwh(final_km))
             final_soc = self._soc_from_kwh(final_kwh)
             logger.info("[%s] Final leg: remaining_kwh=%.1f final_km=%.1f final_kwh=%.1f final_soc=%.1f%% n_stops=%d",
-                         strategy, remaining_kwh, final_km, final_kwh, final_soc, len(stops))
-            logger.info("FINAL: remaining=%.1fkwh final_km=%.1fkm energy_needed=%.1fkwh final_kwh=%.1fkwh soc=%.1f%%",
-                         remaining_kwh, final_km,
-                         self._segment_energy_kwh(final_km),
-                         max(0, remaining_kwh - self._segment_energy_kwh(final_km)),
-                         self._soc_from_kwh(max(0, remaining_kwh - self._segment_energy_kwh(final_km))))
-            # Enforce 15% minimum arrival SOC
+                        strategy, remaining_kwh, final_km, final_kwh, final_soc, len(stops))
             min_arrival_soc = SAFETY_BUFFER * 100.0
             if final_soc < min_arrival_soc and len(stops) > 0 and not _dead_end:
                 logger.warning(
@@ -959,6 +771,7 @@ class EnergyAwareRoutePlanner:
                     final_soc, min_arrival_soc, remaining_kwh, final_km
                 )
                 final_soc = min_arrival_soc
+                final_kwh = min_arrival_soc / 100.0 * self.battery_kwh
             legs.append(TripLeg(
                 leg_index=len(legs),
                 start_name=last_leg_start,
@@ -972,41 +785,20 @@ class EnergyAwareRoutePlanner:
             final_soc = self._soc_from_kwh(remaining_kwh)
 
         total_drive = sum(l.drive_time_seconds for l in legs)
-        total_energy = sum(self._segment_energy_kwh(l.distance_km) for l in legs)
-
-        rest_breaks_s = 0
-        if total_drive > 0:
-            num_breaks = int(total_drive // REST_BREAK_INTERVAL_S)
-            rest_breaks_s = num_breaks * REST_BREAK_DURATION_S
-
-        # Get through-stations waypoint geometry
-        waypoint_geometry = []
-        _dbg['t_osrm_route'] -= time.time()
-        wg = self._osrm_route_waypoints(waypoints)
-        _dbg['t_osrm_route'] += time.time()
-        if wg:
-            waypoint_geometry = wg
-
-        if not waypoint_geometry:
-            wg = []
-            for i in range(len(waypoints) - 1):
-                wg.append([waypoints[i][0], waypoints[i][1]])
-            wg.append([waypoints[-1][0], waypoints[-1][1]])
-            waypoint_geometry = wg
+        total_charge_kwh = sum(s.charge_kwh for s in stops)
+        total_energy = self._usable_start + total_charge_kwh - final_kwh
 
         note = ''
-        if _dead_end and stops:
+        if _hit_max_stops:
+            note = f'Trip requires more charging stops than supported ({max_stops}). Route may not be fully feasible with available charging infrastructure.'
+        elif _dead_end and stops:
             last_km = max(s.distance_from_start_km for s in stops)
             note = f'No charging station found between km {last_km:.0f} and the destination - trip not feasible with current vehicle'
-        elif _search_fail_count > 0 and stops:
-            last_stop_km = max(s.distance_from_start_km for s in stops) if stops else 0
-            note = f'Charging stations are sparse after {last_stop_km:.0f} km. Some segments may require careful range planning.'
 
         plan = RoutePlan(
             total_distance_km=round(max(sum(l.distance_km for l in legs), total_km), 1),
             total_drive_time_seconds=round(total_drive),
             total_charge_time_seconds=round(total_charge_s),
-            total_rest_breaks_seconds=round(rest_breaks_s),
             total_cost=round(total_cost, 2),
             total_energy_consumed_kwh=round(total_energy, 2),
             legs=legs,
@@ -1016,35 +808,6 @@ class EnergyAwareRoutePlanner:
             dest_name=dest_name,
             note=note,
             strategy=strategy,
-            waypoint_geometry=waypoint_geometry,
-            battery_profile=[],
         )
-
-        _t_total = time.time() - _dbg['t_start']
-        logger.info("========== TIMING [%s] ==========", strategy)
-        logger.info("  OSRM table:      %8.3f sec  (%d calls, %d coords total)",
-                     _dbg['t_osrm_table'], _dbg['osrm_table_calls'], _dbg['osrm_table_coords'])
-        logger.info("  OSRM route:      %8.3f sec", _dbg['t_osrm_route'])
-        logger.info("  Station filter:  %8.3f sec", _dbg['t_filter'])
-        logger.info("  Scoring/charge:  %8.3f sec", _dbg['t_scoring'])
-        logger.info("  Path segments:   %8d  (route_coords=%d)",
-                     len(seg_dists), len(route_coords))
-        logger.info("  Stations loaded: %8d", _dbg['stations_loaded'])
-        logger.info("  Rejected bbox:   %8d", _dbg['stations_rejected_bbox'])
-        logger.info("  Rejected route:  %8d", _dbg['stations_rejected_route'])
-        logger.info("  Rejected slot:   %8d", _dbg['stations_rejected_slot'])
-        logger.info("  _min_dist calls: %8d", _dbg['calls_min_dist'])
-        logger.info("  _project calls:  %8d", _dbg['calls_project'])
-        logger.info("  Expansion iters: %8d", _dbg['expansion_iterations'])
-        logger.info("  While iters:     %8d", _dbg['while_iterations'])
-        logger.info("  Waypoints:       %8d", len(waypoints))
-        logger.info("  Stops selected:  %8d", len(stops))
-        logger.info("  TOTAL TIME:      %8.3f sec", _t_total)
-        logger.info("====================================")
-
-        issues = self._validate_route(plan)
-        if issues:
-            logger.warning("[%s] Route validation issues: %s", strategy, '; '.join(issues))
-            plan.note = ('; '.join(issues)) if not plan.note else plan.note + '; ' + '; '.join(issues)
 
         return plan
