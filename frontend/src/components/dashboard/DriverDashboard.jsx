@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiUser, FiTruck, FiBatteryCharging, FiCalendar, FiX, FiBarChart2, FiMap, FiNavigation, FiBell, FiDollarSign, FiPlus, FiArrowRight, FiPhone } from 'react-icons/fi'
+import { FiUser, FiTruck, FiBatteryCharging, FiCalendar, FiX, FiBarChart2, FiMap, FiNavigation, FiBell, FiDollarSign, FiPlus, FiArrowRight, FiPhone, FiPlay, FiCheckCircle } from 'react-icons/fi'
 import { getProfile, updateProfile } from '../../api/auth'
-import { getBookings, cancelBooking } from '../../api/bookings'
+import { getBookings, cancelBooking, startCharging, completeCharging } from '../../api/bookings'
 import { getTrips } from '../../api/trips'
 import { getNotifications } from '../../api/notifications'
 import { formatCurrency, getSlotTypeColor } from '../../utils/formatters'
@@ -100,6 +100,40 @@ export default function DriverDashboard() {
     } catch (error) {
       console.error('Failed to cancel booking ' + bookingId + ':', error)
       showToast('Could not cancel booking. Please try again.', 'error')
+    }
+  }
+
+  async function handleStartCharging(bookingId) {
+    try {
+      var res = await startCharging(bookingId)
+      setBookings(bookings.map(function (b) {
+        return b.id === bookingId ? res.data : b
+      }))
+      showToast('Charging started!', 'success')
+    } catch (error) {
+      var msg = 'Could not start charging.'
+      if (error.response && error.response.data && error.response.data.error) {
+        msg = error.response.data.error
+      }
+      console.error('Failed to start charging ' + bookingId + ':', error)
+      showToast(msg, 'error')
+    }
+  }
+
+  async function handleCompleteCharging(bookingId) {
+    try {
+      var res = await completeCharging(bookingId)
+      setBookings(bookings.map(function (b) {
+        return b.id === bookingId ? res.data : b
+      }))
+      showToast('Charging completed!', 'success')
+    } catch (error) {
+      var msg = 'Could not complete charging.'
+      if (error.response && error.response.data && error.response.data.error) {
+        msg = error.response.data.error
+      }
+      console.error('Failed to complete charging ' + bookingId + ':', error)
+      showToast(msg, 'error')
     }
   }
 
@@ -381,19 +415,35 @@ export default function DriverDashboard() {
               var stationName = booking.slot_details
                 ? booking.slot_details.station_name
                 : 'Slot #' + booking.slot
-              var isActive = booking.status === 'CONFIRMED'
+              var isConfirmed = booking.status === 'CONFIRMED'
+              var isInProgress = booking.status === 'IN_PROGRESS'
+              var isCompleted = booking.status === 'COMPLETED'
               var slotType = booking.slot_details ? booking.slot_details.slot_type : null
               var sc = slotType ? getSlotTypeColor(slotType) : null
 
+              var cardStyle = isConfirmed
+                ? 'bg-emerald-50/80 dark:bg-emerald-900/15 border border-emerald-200 dark:border-emerald-800'
+                : isInProgress
+                  ? 'bg-blue-50/80 dark:bg-blue-900/15 border border-blue-200 dark:border-blue-800'
+                  : 'bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800'
+              var iconStyle = isConfirmed
+                ? 'bg-emerald-100 dark:bg-emerald-800 text-emerald-500'
+                : isInProgress
+                  ? 'bg-blue-100 dark:bg-blue-800 text-blue-500'
+                  : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
+              var statusTextStyle = isConfirmed
+                ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                : isInProgress
+                  ? 'text-blue-600 dark:text-blue-400 font-medium'
+                  : 'text-gray-500'
+
               return (
                 <div key={booking.id}
-                  className={'flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl transition-all ' + (isActive
-                    ? 'bg-emerald-50/80 dark:bg-emerald-900/15 border border-emerald-200 dark:border-emerald-800'
-                    : 'bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800')}>
+                  className={'flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl transition-all ' + cardStyle}>
 
                   <div className="flex items-start gap-3 min-w-0 flex-1">
-                    <div className={'w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ' + (isActive ? 'bg-emerald-100 dark:bg-emerald-800' : 'bg-gray-200 dark:bg-gray-700')}>
-                      <FiCalendar className={'w-4 h-4 ' + (isActive ? 'text-emerald-500' : 'text-gray-400')} />
+                    <div className={'w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ' + iconStyle}>
+                      <FiCalendar className="w-4 h-4" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -408,18 +458,35 @@ export default function DriverDashboard() {
                         <span>{formatDateShort(booking.start_time)}</span>
                         {booking.start_time && <><span className="text-gray-300 dark:text-gray-600">|</span><span>{formatTime(booking.start_time)}</span></>}
                         <span className="text-gray-300 dark:text-gray-600">|</span>
-                        <span className={isActive ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-gray-500'}>{booking.status}</span>
+                        <span className={statusTextStyle}>{booking.status}</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2.5 shrink-0 ml-auto sm:ml-0">
                     <span className="text-sm font-bold text-gray-900 dark:text-white whitespace-nowrap">{formatCurrency(booking.amount_charged)}</span>
-                    {isActive && (
-                      <button onClick={function () { handleCancel(booking.id) }}
-                        className="px-2.5 py-1.5 text-[11px] font-medium text-red-500 hover:text-white hover:bg-red-500 border border-red-200 dark:border-red-800 rounded-lg hover:border-red-500 transition-all">
-                        Cancel
+                    {isConfirmed && (
+                      <>
+                        <button onClick={function () { handleStartCharging(booking.id) }}
+                          className="px-2.5 py-1.5 text-[11px] font-medium text-emerald-500 hover:text-white hover:bg-emerald-500 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:border-emerald-500 transition-all flex items-center gap-1">
+                          <FiPlay className="w-3 h-3" /> Start
+                        </button>
+                        <button onClick={function () { handleCancel(booking.id) }}
+                          className="px-2.5 py-1.5 text-[11px] font-medium text-red-500 hover:text-white hover:bg-red-500 border border-red-200 dark:border-red-800 rounded-lg hover:border-red-500 transition-all">
+                          Cancel
+                        </button>
+                      </>
+                    )}
+                    {isInProgress && (
+                      <button onClick={function () { handleCompleteCharging(booking.id) }}
+                        className="px-2.5 py-1.5 text-[11px] font-medium text-blue-500 hover:text-white hover:bg-blue-500 border border-blue-200 dark:border-blue-800 rounded-lg hover:border-blue-500 transition-all flex items-center gap-1">
+                        <FiCheckCircle className="w-3 h-3" /> End
                       </button>
+                    )}
+                    {isCompleted && (
+                      <span className="px-2.5 py-1.5 text-[11px] font-medium text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 rounded-lg">
+                        Completed
+                      </span>
                     )}
                   </div>
                 </div>

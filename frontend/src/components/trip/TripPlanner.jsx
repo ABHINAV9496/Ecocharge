@@ -4,6 +4,7 @@ import { FiSearch, FiMapPin, FiBatteryCharging, FiNavigation, FiDollarSign, FiCl
 import { createTrip } from '../../api/trips'
 import { planRoute, planRouteStream } from '../../api/routePlanner'
 import { useAuth } from '../../context/AuthContext'
+import { useToast } from '../../context/ToastContext'
 import { useVehicle } from '../../context/VehicleContext'
 import { searchLocations } from '../../api/geocode'
 import { formatCurrency, formatDuration, chargerLabel } from '../../utils/formatters'
@@ -15,6 +16,7 @@ var OSRM_BASE = 'https://router.project-osrm.org/route/v1/driving'
 
 export default function TripPlanner() {
   var { user } = useAuth()
+  var showToast = useToast()
   var { vehicle, setVehicle, vehicles } = useVehicle()
   var navigate = useNavigate()
   var [origin, setOrigin] = useState('')
@@ -23,8 +25,6 @@ export default function TripPlanner() {
   var [destCoords, setDestCoords] = useState(null)
   var [batteryPercent, setBatteryPercent] = useState(80)
   var [route, setRoute] = useState(null)
-  var [selectedAlt, setSelectedAlt] = useState(0)
-  var [alternatives, setAlternatives] = useState([])
   var [isLoading, setIsLoading] = useState(false)
   var [progressMessage, setProgressMessage] = useState('')
   var [error, setError] = useState('')
@@ -38,6 +38,9 @@ export default function TripPlanner() {
   var originTimer = useRef(null)
   var destTimer = useRef(null)
   var whatIfTimer = useRef(null)
+  var [chargerType, setChargerType] = useState('all')
+  var [comparison, setComparison] = useState(null)
+  var [comparing, setComparing] = useState(false)
 
   async function geocode(query, type) {
     if (!query.trim()) {
@@ -45,8 +48,11 @@ export default function TripPlanner() {
       else { setDestSuggestions([]); setShowDestSugg(false) }
       return
     }
+    var t0 = performance.now()
     try {
       var data = await searchLocations(query, 5)
+      var elapsed = ((performance.now() - t0) / 1000).toFixed(3)
+      console.log('[TIMING] ' + type + '_geocoding: ' + elapsed + 's')
       if (type === 'origin') { setOriginSuggestions(data); setShowOriginSugg(data.length > 0) }
       else { setDestSuggestions(data); setShowDestSugg(data.length > 0) }
     } catch (e) { console.error('Geocode error:', e) }
@@ -80,12 +86,16 @@ export default function TripPlanner() {
     if (!originCoords || !destCoords) { setError('Please select valid origin and destination from suggestions.'); return }
     if (!vehicle) { setError('No vehicle selected.'); return }
     setIsLoading(true); setProgressMessage('Requesting route...'); setError(''); setSaved(false); setRoute(null)
+    var timings = {}
     try {
+      var t0 = performance.now()
       var url = OSRM_BASE + '/' + originCoords.lng + ',' + originCoords.lat + ';' + destCoords.lng + ',' + destCoords.lat + '?geometries=geojson&overview=full&steps=true'
       var res = await fetch(url)
       var data = await res.json()
+      timings['4_route_api_osrm'] = ((performance.now() - t0) / 1000).toFixed(1) + 's'
       if (!data.routes || data.routes.length === 0) { setError('Could not find a route.'); setIsLoading(false); return }
 
+      var t1 = performance.now()
       var osrmRoute = data.routes[0]
       var coordinates = osrmRoute.geometry.coordinates.map(function (c) { return [c[1], c[0]] })
 
@@ -95,10 +105,12 @@ export default function TripPlanner() {
         var step = coordinates.length / MAX_PLANNER_POINTS
         coordinates = coordinates.filter(function (_, i) { return i === 0 || i === coordinates.length - 1 || Math.floor(i % step) === 0 })
       }
+      timings['5_polyline_decoding'] = ((performance.now() - t1) / 1000).toFixed(1) + 's'
 
       var distanceM = osrmRoute.distance
       var durationS = osrmRoute.duration
 
+      var t2 = performance.now()
       // Use streaming endpoint with progress
       await planRouteStream({
         route_coords: coordinates,
@@ -108,28 +120,84 @@ export default function TripPlanner() {
         battery_start_percent: batteryPercent,
         origin_name: origin,
         dest_name: destination,
+        charger_type: chargerType,
       },
       function onProgress(msg) { setProgressMessage(msg) },
       function onResult(backendPlan) {
-        setAlternatives(backendPlan.alternatives || [])
-        setSelectedAlt(0)
+        timings['backend_total'] = ((performance.now() - t2) / 1000).toFixed(1) + 's'
+        console.log('========== TRIP PLAN CLIENT TIMINGS ==========')
+        for (var tk in timings) { console.log('  ' + tk + ': ' + timings[tk]) }
+        console.log('=============================================')
         setRoute({
           route: coordinates,
           distance: distanceM,
           duration: durationS,
           backendPlan: backendPlan,
-          originalPlan: Object.assign({}, backendPlan),
           origin: originCoords,
           destination: destCoords,
           originName: origin,
           destName: destination,
           stops: backendPlan.stops || [],
         })
+        if (backendPlan.note && (backendPlan.note.includes('No ') || backendPlan.note.includes('No reachable'))) {
+          showToast(backendPlan.note, 'error')
+        }
         setIsLoading(false)
         setProgressMessage('')
       },
-      function onError(errMsg) { setError(errMsg || 'Route planning failed.'); setIsLoading(false); setProgressMessage('') })
+      function onError(errMsg) { showToast(errMsg || 'Route planning failed.', 'error'); setError(errMsg || 'Route planning failed.'); setIsLoading(false); setProgressMessage('') })
     } catch (e) { console.error(e); setError('Route planning failed. Please try again.'); setIsLoading(false); setProgressMessage('') }
+  }
+
+  async function handleQuickCompare() {
+    if (!originCoords || !destCoords || !vehicle) return
+    setComparing(true); setError('')
+    var types = ['all', 'dc', 'ac']
+    var results = {}
+    try {
+      var t0 = performance.now()
+      var url = OSRM_BASE + '/' + originCoords.lng + ',' + originCoords.lat + ';' + destCoords.lng + ',' + destCoords.lat + '?geometries=geojson&overview=full&steps=true'
+      var res = await fetch(url)
+      var data = await res.json()
+      if (!data.routes || data.routes.length === 0) { setError('Could not find a route.'); setComparing(false); return }
+      var osrmRoute = data.routes[0]
+      var coordinates = osrmRoute.geometry.coordinates.map(function (c) { return [c[1], c[0]] })
+      var MAX_PLANNER_POINTS = 1000
+      if (coordinates.length > MAX_PLANNER_POINTS) {
+        var step = coordinates.length / MAX_PLANNER_POINTS
+        coordinates = coordinates.filter(function (_, i) { return i === 0 || i === coordinates.length - 1 || Math.floor(i % step) === 0 })
+      }
+      var distanceM = osrmRoute.distance
+      var durationS = osrmRoute.duration
+
+      await Promise.all(types.map(async function (t) {
+        try {
+          var resp = await planRoute({
+            route_coords: coordinates,
+            total_distance_m: distanceM,
+            total_duration_s: durationS,
+            vehicle_id: vehicle.id,
+            battery_start_percent: batteryPercent,
+            origin_name: origin,
+            dest_name: destination,
+            charger_type: t,
+          })
+          var bp = resp.data
+          var totalTime = (bp.total_drive_time_seconds || 0) + (bp.total_charge_time_seconds || 0)
+          results[t] = {
+            stops: bp.stops ? bp.stops.length : 0,
+            chargeTime: bp.total_charge_time_seconds || 0,
+            totalTime: totalTime,
+            cost: bp.total_cost || 0,
+            note: bp.note || '',
+          }
+        } catch (e) {
+          results[t] = { stops: '-', chargeTime: 0, totalTime: 0, cost: 0, note: 'Error' }
+        }
+      }))
+      setComparison(results)
+    } catch (e) { console.error(e); setError('Quick compare failed.') }
+    setComparing(false)
   }
 
   function handleWhatIfChange(newValue) {
@@ -151,44 +219,14 @@ export default function TripPlanner() {
         battery_start_percent: batteryValue,
         origin_name: route.originName,
         dest_name: route.destName,
+        charger_type: chargerType,
       })
       var backendPlan = planResult.data
-      setAlternatives(backendPlan.alternatives || [])
-      setSelectedAlt(0)
       setRoute(Object.assign({}, route, {
         backendPlan: backendPlan,
-        originalPlan: Object.assign({}, backendPlan),
         stops: backendPlan.stops || [],
       }))
     } catch (e) { console.error('Replan error:', e) }
-  }
-
-  function handleSelectAlt(index) {
-    setSelectedAlt(index)
-    if (index === 0) {
-      if (route && route.originalPlan) {
-        setRoute(Object.assign({}, route, {
-          backendPlan: route.originalPlan,
-          stops: route.originalPlan.stops || [],
-        }))
-      }
-      return
-    }
-    if (!route) return
-    var alt = alternatives[index - 1]
-    if (!alt) return
-    setRoute(Object.assign({}, route, {
-      backendPlan: Object.assign({}, route.backendPlan, {
-        total_drive_time_seconds: alt.total_drive_time_seconds,
-        total_charge_time_seconds: alt.total_charge_time_seconds,
-        total_cost: alt.total_cost,
-        total_energy_consumed_kwh: alt.total_energy_consumed_kwh,
-        final_soc_percent: alt.final_soc_percent,
-        stops: alt.stops || [],
-        legs: alt.legs || [],
-      }),
-      stops: alt.stops || [],
-    }))
   }
 
   async function handleSaveTrip() {
@@ -322,17 +360,6 @@ export default function TripPlanner() {
   if (bp && bp.total_charge_time_seconds > 0 && stopCount === 0) {
     validationWarnings.push('Charging time is positive but no charging stops defined')
   }
-  if (alternatives && alternatives.length >= 1) {
-    var fData = selectedAlt === 0 ? bp : (route ? route.originalPlan : null)
-    var cData = alternatives[0]
-    if (fData && cData) {
-      var fTotal = (fData.total_drive_time_seconds || 0) + (fData.total_charge_time_seconds || 0)
-      var cTotal = (cData.total_drive_time_seconds || 0) + (cData.total_charge_time_seconds || 0)
-      if (cTotal > 0 && fTotal > cTotal + 1800) {
-        validationWarnings.push('Fastest is slower than Cheapest — unexpected ordering')
-      }
-    }
-  }
 
   return (
     <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-5">
@@ -390,69 +417,86 @@ export default function TripPlanner() {
             <div className="flex justify-between text-[10px] text-gray-400 mt-0.5"><span>10%</span><span>100%</span></div>
           </div>
 
-          <button onClick={handlePlanRoute} disabled={isLoading || !originCoords || !destCoords}
-            className={'w-full py-2.5 text-sm font-medium rounded-xl transition-all flex items-center justify-center gap-2 ' + (isLoading || !originCoords || !destCoords ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-600 hover:to-emerald-700')}>
-            {isLoading ? <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> Planning...</> : <><FiSearch className="w-4 h-4" /> Plan Trip</>}
-          </button>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Charger Type</label>
+            <div className="flex gap-2">
+              {[
+                { value: 'all', label: 'Mixed' },
+                { value: 'dc', label: 'DC Only' },
+                { value: 'ac', label: 'AC Only' },
+              ].map(function (opt) {
+                return (
+                  <button key={opt.value} type="button"
+                    onClick={function () { setChargerType(opt.value); setComparison(null) }}
+                    className={'flex-1 py-2 text-xs font-medium rounded-xl transition-all ' +
+                      (chargerType === opt.value
+                        ? 'bg-emerald-500 text-white shadow-sm'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600')}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500">
+              {chargerType === 'all' ? 'All charger types considered (DC + AC)' :
+               chargerType === 'dc' ? 'Only DC Fast and DC Ultra chargers' :
+               'Only AC Fast and AC Slow chargers'}
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={handlePlanRoute} disabled={isLoading || !originCoords || !destCoords}
+              className={'flex-1 py-2.5 text-sm font-medium rounded-xl transition-all flex items-center justify-center gap-2 ' + (isLoading || !originCoords || !destCoords ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 hover:from-emerald-600 hover:to-emerald-700')}>
+              {isLoading ? <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" /> Planning...</> : <><FiSearch className="w-4 h-4" /> Plan Trip</>}
+            </button>
+            <button onClick={handleQuickCompare} disabled={comparing || !originCoords || !destCoords}
+              className={'py-2.5 px-3 text-xs font-medium rounded-xl transition-all flex items-center justify-center gap-1.5 border ' + (comparing || !originCoords || !destCoords ? 'border-gray-200 dark:border-gray-700 text-gray-400 cursor-not-allowed bg-gray-50 dark:bg-gray-800' : 'border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 bg-white dark:bg-gray-800')}>
+              {comparing ? <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-emerald-500 border-t-transparent" /> : <FiZap className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">Quick Compare</span>
+            </button>
+          </div>
           {isLoading && progressMessage && <div className="text-xs text-emerald-600 dark:text-emerald-400 text-center animate-pulse">{progressMessage}</div>}
 
           {error && <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-xl">{error}</div>}
-        </div>
 
-        {route && (
-          <div className="pt-4 border-t border-gray-200 dark:border-gray-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Route Options</h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-              { (function () {
-                var cards = []
-                var fastestPlan = selectedAlt === 0 ? bp : (route ? route.originalPlan : null)
-                var cheapestPlan = alternatives[0]
-                var fastestCost = fastestPlan ? fastestPlan.total_cost : 0
-
-                var planDefs = [
-                  { idx: 0, label: '\u26A1 Fastest', color: 'emerald', desc: 'Premium DC chargers for minimum travel time', data: fastestPlan },
-                  { idx: 1, label: '\uD83D\uDCB0 Cheapest', color: 'amber', desc: 'Lowest-cost chargers to minimize expenses', data: cheapestPlan },
-                ]
-
-                for (var ci = 0; ci < planDefs.length; ci++) {
-                  let pd = planDefs[ci]
-                  var d = pd.data || {}
-                  var totalTime = (d.total_drive_time_seconds || 0) + (d.total_charge_time_seconds || 0)
-                  if (pd.idx === 0 && !totalTime) { totalTime = route.duration + (bp ? bp.total_charge_time_seconds : 0) }
-                  var isSelected = selectedAlt === pd.idx
-                  var stopCt = d.stops ? d.stops.length : 0
-                  var cost = d.total_cost || 0
-                  var savings = Math.max(0, (fastestCost || 0) - cost)
-                  var savingsFormatted = savings > 0.5 ? '\u20B9' + Math.round(savings).toLocaleString('en-IN') : null
-
-                  cards.push(
-                    <button key={ci} onClick={function () { handleSelectAlt(pd.idx) }}
-                      className={'relative flex-1 p-3 rounded-xl transition-all duration-300 text-left ' + (isSelected
-                        ? 'bg-white dark:bg-gray-800 border-2 border-' + pd.color + '-400 dark:border-' + pd.color + '-500 shadow-lg shadow-' + pd.color + '-200/50 dark:shadow-' + pd.color + '-900/20 scale-[1.02] z-10'
-                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-' + pd.color + '-300 shadow-sm hover:shadow-md')}>
-                      {isSelected && <div className="absolute -top-2 -right-2 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/30"><svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>}
-                      <div className={'text-base font-bold tracking-tight ' + (isSelected ? 'text-gray-900 dark:text-white' : 'text-gray-800 dark:text-gray-200')}>{formatDuration(totalTime)}</div>
-                      <div className={'text-[11px] font-semibold mt-0.5 ' + (isSelected ? 'text-' + pd.color + '-600 dark:text-' + pd.color + '-400' : 'text-gray-500 dark:text-gray-400')}>{pd.label}</div>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {pd.idx === 0 && <span className="inline-flex items-center text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">Fastest option</span>}
-                        {pd.idx > 0 && savingsFormatted && <span className={'inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded ' + (isSelected ? 'bg-' + pd.color + '-50 dark:bg-' + pd.color + '-900/20 text-' + pd.color + '-600 dark:text-' + pd.color + '-400' : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400')}>Save {savingsFormatted}</span>}
+          {comparison && (
+            <div className="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="text-xs font-semibold text-gray-900 dark:text-white">Quick Compare</h4>
+                <button onClick={function () { setComparison(null) }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {['all', 'dc', 'ac'].map(function (t) {
+                  var d = comparison[t]
+                  var labels = { all: 'Mixed', dc: 'DC Only', ac: 'AC Only' }
+                  var isSelected = chargerType === t
+                  var stopLabel = d.stops !== '-' ? d.stops + ' stop' + (d.stops !== 1 ? 's' : '') : '\u2014'
+                  return (
+                    <button key={t} type="button"
+                      onClick={function () { setChargerType(t); setComparison(null) }}
+                      className={'p-2 rounded-lg text-center text-[11px] transition-all ' +
+                        (isSelected
+                          ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-300 dark:border-emerald-700 ring-1 ring-emerald-400/50'
+                          : 'bg-gray-50 dark:bg-gray-700/50 border border-transparent hover:border-gray-300 dark:hover:border-gray-600')}
+                    >
+                      <div className="font-semibold text-gray-900 dark:text-white mb-1">{labels[t]}</div>
+                      <div className="text-gray-500 dark:text-gray-400">{stopLabel}</div>
+                      <div className="text-gray-500 dark:text-gray-400">{d.stops !== '-' ? formatDuration(d.chargeTime) + ' charge' : '\u2014'}</div>
+                      <div className="text-gray-500 dark:text-gray-400">{d.stops !== '-' ? '\u20B9' + Math.round(d.cost).toLocaleString('en-IN') : '\u2014'}</div>
+                      <div className={'mt-1 text-[10px] ' + (d.note && d.note.includes('No ') ? 'text-amber-500' : 'text-emerald-400')}>
+                        {d.note && d.note.includes('No ') ? '\u26A0\uFE0F No stations' : d.note === 'Error' ? '\u2716 Error' : ''}
                       </div>
-                      <div className="mt-1.5 space-y-0.5 text-[11px] text-gray-400 dark:text-gray-500">
-                        <div className="flex items-center gap-1"><FiZap className="w-3 h-3" />{formatDuration(d.total_charge_time_seconds || 0)} charging</div>
-                        <div className="flex items-center gap-1"><FiBatteryCharging className="w-3 h-3" />{stopCt} stop{stopCt !== 1 ? 's' : ''} &middot; {d.final_soc_percent || arrivalPercent}% arrival</div>
-                        <div className="flex items-center gap-1"><FiDollarSign className="w-3 h-3" />{'\u20B9' + Math.round(cost).toLocaleString('en-IN')}</div>
-                      </div>
-                      <div className="mt-1.5 text-[10px] text-gray-400 dark:text-gray-500 italic leading-tight">{pd.desc}</div>
                     </button>
                   )
-                }
-                return cards
-              })()}
+                })}
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1.5 text-center">Tap a type to select, then click Plan Trip</p>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {route && validationWarnings.length > 0 && (
           <div className="space-y-1">
@@ -473,7 +517,7 @@ export default function TripPlanner() {
                 <FiClock className="w-4 h-4 text-gray-400 shrink-0" />
                 <div className="min-w-0">
                   <div className="text-[10px] text-gray-400 uppercase tracking-wider">Total Trip Time</div>
-                  <div className="text-sm font-bold text-gray-900 dark:text-white">{formatDuration((bp ? bp.total_drive_time_seconds : 0) + (bp ? bp.total_charge_time_seconds : 0))}</div>
+                  <div className="text-sm font-bold text-gray-900 dark:text-white">{formatDuration(bp ? bp.total_trip_time_seconds : 0)}</div>
                 </div>
               </div>
               <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800 rounded-xl p-2.5">
@@ -543,6 +587,26 @@ export default function TripPlanner() {
                 bp.destination_weather ? { icon: bp.destination_weather.icon, temperature: bp.destination_weather.temperature, precipitation_probability: bp.destination_weather.precipitation_probability } : null,
               ].filter(Boolean)} />
             )}
+
+            <details className="text-xs text-gray-500 dark:text-gray-400 group">
+              <summary className="cursor-pointer hover:text-gray-700 dark:hover:text-gray-300 font-medium py-1 select-none">
+                Try different charger type
+              </summary>
+              <div className="flex gap-2 mt-1.5">
+                {['all', 'dc', 'ac'].map(function (t) {
+                  if (t === chargerType) return null
+                  var labels = { all: 'Mixed', dc: 'DC Only', ac: 'AC Only' }
+                  return (
+                    <button key={t} type="button"
+                      onClick={function () { setChargerType(t); recalcPlan(batteryPercent) }}
+                      className="px-2.5 py-1.5 bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:text-emerald-600 dark:hover:text-emerald-400 transition-all text-[11px] font-medium"
+                    >
+                      {labels[t]}
+                    </button>
+                  )
+                })}
+              </div>
+            </details>
 
             {stopCount > 0 && bp.stops.map(function (stop, i) {
               var prevDist = i > 0 ? bp.stops[i - 1].distance_from_start_km : 0

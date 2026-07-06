@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, LayersControl, Polyline } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, LayersControl, Polyline } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 
 import L from 'leaflet'
@@ -89,16 +89,36 @@ export default function MapView({ routePlan }) {
   var showToast = useToast()
   var debounceTimer = useRef(null)
   var initialLoadDone = useRef(null)
+  var stationCache = useRef({})
   var bp = routePlan ? routePlan.backendPlan : null
+
+  function getBoundsCell(bounds) {
+    if (!bounds) return null
+    var digits = 1
+    var key = (Math.round(bounds.getSouth() * digits) / digits) + ',' +
+              (Math.round(bounds.getWest() * digits) / digits) + ',' +
+              (Math.round(bounds.getNorth() * digits) / digits) + ',' +
+              (Math.round(bounds.getEast() * digits) / digits)
+    return key
+  }
 
   var loadStations = useCallback(async function (explicitBounds) {
     if (debounceTimer.current) { clearTimeout(debounceTimer.current); debounceTimer.current = null }
+    var bounds
+    if (explicitBounds) { bounds = explicitBounds }
+    else if (mapRef.current) { bounds = mapRef.current.getBounds() }
+    if (!bounds) return
+    var cellKey = getBoundsCell(bounds)
+    if (cellKey && stationCache.current[cellKey]) {
+      setStations(stationCache.current[cellKey]); return
+    }
     setIsLoading(true); setIsError(false); setErrorMessage('')
     try {
       var params = {}
-      if (explicitBounds) { params.bounds = explicitBounds.south + ',' + explicitBounds.west + ',' + explicitBounds.north + ',' + explicitBounds.east }
-      else if (mapRef.current) { var b = mapRef.current.getBounds(); params.bounds = b.getSouth() + ',' + b.getWest() + ',' + b.getNorth() + ',' + b.getEast() }
-      var response = await getStations(params); var data = response.data || []; setStations(data)
+      params.bounds = bounds.getSouth() + ',' + bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast()
+      var response = await getStations(params); var data = response.data || []
+      setStations(data)
+      if (cellKey) stationCache.current[cellKey] = data
     } catch (error) {
       console.error('Failed to load charging stations:', error); setIsError(true)
       setErrorMessage(error.code === 'ERR_NETWORK' || error.message === 'Network Error' ? 'Could not connect to the server. The backend may be down.' : error.response && error.response.status === 401 ? 'Please log in to view charging stations.' : 'Failed to load stations. Please try again.')
@@ -115,12 +135,17 @@ export default function MapView({ routePlan }) {
     }
   }, [routePlan])
 
-  useEffect(function () {
-    if (!initialLoadDone.current) {
-      initialLoadDone.current = true; var timer = setInterval(function () { if (mapRef.current) { clearInterval(timer); loadStations() } }, 100)
-      return function () { clearInterval(timer) }
-    }
-  }, [])
+  function MapInitLoader() {
+    var map = useMap()
+    useEffect(function () {
+      if (!initialLoadDone.current) {
+        initialLoadDone.current = true
+        mapRef.current = map
+        loadStations()
+      }
+    }, [])
+    return null
+  }
 
   useEffect(function () {
     function handleClick(e) {
@@ -276,20 +301,23 @@ export default function MapView({ routePlan }) {
       <MapContainer center={userLocation} zoom={5} minZoom={5} maxBounds={[[-90, -180], [90, 180]]} maxBoundsViscosity={1.0} worldCopyJump={false} className="h-full w-full" ref={mapRef}>
         <LayersControl position="bottomright">
           <LayersControl.BaseLayer checked name="Roadmap">
-            <TileLayer attribution='' url="https://mt{s}.google.com/vt/lyrs=m&hl=en&x={x}&y={y}&z={z}" subdomains="0123" />
+            <TileLayer attribution='&copy; <a href="https://openstreetmap.org/copyright">OSM</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           </LayersControl.BaseLayer>
           <LayersControl.BaseLayer name="Satellite">
             <TileLayer attribution='&copy; <a href="https://esa.int">ESA</a>' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}.png" />
           </LayersControl.BaseLayer>
         </LayersControl>
+        <MapInitLoader />
         <FitBoundsOnRoute routePlan={routePlan} />
         <ViewportWatcher onViewportChange={handleViewportChange} />
         {routeCoordsForPolyline && <Polyline positions={routeCoordsForPolyline} pathOptions={{ color: '#10b981', weight: 4, opacity: 0.8 }} />}
         {routePlan && routePlan.origin && <Marker position={[routePlan.origin.lat, routePlan.origin.lng]} icon={createRouteMarkerIcon('#10b981', 'S')} />}
         {routePlan && routePlan.destination && <Marker position={[routePlan.destination.lat, routePlan.destination.lng]} icon={createRouteMarkerIcon('#ef4444', 'E')} />}
         {routePlan && routePlan.stops && routePlan.stops.map(function (stop, i) {
-          if (!stop.lat || !stop.lng) return null
-          return <Marker key={'stop-' + i} position={[stop.lat, stop.lng]} icon={createStopIcon(i + 1)}>
+          var stopLat = stop.projected_lat || stop.lat
+          var stopLng = stop.projected_lng || stop.lng
+          if (!stopLat || !stopLng) return null
+          return <Marker key={'stop-' + i} position={[stopLat, stopLng]} icon={createStopIcon(i + 1)}>
             <Popup><div className="min-w-[200px]">
               <h3 className="font-semibold text-sm text-gray-900 dark:text-white mb-1">{stop.station_name || stop.name || 'Charging Stop'}</h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{stop.address || ''}</p>
@@ -305,7 +333,11 @@ export default function MapView({ routePlan }) {
                 {stop.cost != null && <span className="flex items-center gap-1"><FiDollarSign className="w-3 h-3 text-emerald-400" />{'\u20B9' + Math.round(stop.cost).toLocaleString('en-IN')}</span>}
               </div>
               {stop.charge_kwh != null && <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-1.5">Energy: {stop.charge_kwh.toFixed(1)} kWh</p>}
-              <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">Charging stop #{i + 1}</div>
+              <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium mb-2">Charging stop #{i + 1}</div>
+              <div className="flex gap-1.5">
+                <button onClick={function () { navigate('/stations/' + stop.station_id + '?book=true') }} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiBookOpen className="w-3 h-3" /> Book Now</button>
+                <button onClick={function () { navigate('/stations/' + stop.station_id) }} className="flex-1 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiExternalLink className="w-3 h-3" /> Details</button>
+              </div>
             </div></Popup>
           </Marker>
         })}

@@ -12,9 +12,9 @@
 */
 
 import { useState, useEffect, useRef } from 'react'
-import { FiPlus, FiMapPin, FiTrendingUp, FiCalendar, FiZap, FiDollarSign, FiEdit2, FiTrash2, FiCrosshair, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
+import { FiPlus, FiMapPin, FiTrendingUp, FiCalendar, FiZap, FiDollarSign, FiEdit2, FiTrash2, FiCrosshair, FiChevronLeft, FiChevronRight, FiXCircle, FiCheckCircle } from 'react-icons/fi'
 import { getMyStations, getStations, createStation, updateStation, deleteStation, createSlot } from '../../api/stations'
-import { getBookings } from '../../api/bookings'
+import { getBookings, ownerCompleteBooking, ownerNoShowBooking } from '../../api/bookings'
 import { formatCurrency, formatDate, SLOT_TYPE_LABELS } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
 import { SkeletonStats } from '../layout/Skeleton'
@@ -92,9 +92,9 @@ export default function StationOwnerDashboard() {
     return sum + (station.slots ? station.slots.length : 0)
   }, 0)
   var revenue = bookings
-    .filter(function (b) { return b.status === 'CONFIRMED' || b.status === 'COMPLETED' })
+    .filter(function (b) { return ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED'].includes(b.status) })
     .reduce(function (sum, b) { return sum + parseFloat(b.amount_charged || 0) }, 0)
-  var activeBookings = bookings.filter(function (b) { return b.status === 'CONFIRMED' }).length
+  var activeBookings = bookings.filter(function (b) { return ['CONFIRMED', 'IN_PROGRESS'].includes(b.status) }).length
 
   // ---- HANDLE: Create or Update Station ----
   async function handleSaveStation() {
@@ -153,6 +153,33 @@ export default function StationOwnerDashboard() {
     } catch (error) {
       console.error('Failed to delete station ' + stationId + ':', error)
       showToast('Could not delete station. It may have active bookings.', 'error')
+    }
+  }
+
+  // ---- HANDLE: Owner Force Complete a Booking ----
+  async function handleOwnerComplete(bookingId) {
+    try {
+      await ownerCompleteBooking(bookingId)
+      showToast('Booking marked as completed', 'success')
+      loadBookings()
+    } catch (error) {
+      console.error('Failed to complete booking ' + bookingId + ':', error)
+      showToast('Could not complete booking.', 'error')
+    }
+  }
+
+  // ---- HANDLE: Owner Mark Booking as No Show ----
+  async function handleOwnerNoShow(bookingId) {
+    if (!window.confirm('Mark this booking as no show? The slot will be released and the booking cancelled.')) {
+      return
+    }
+    try {
+      await ownerNoShowBooking(bookingId)
+      showToast('Booking marked as no show', 'success')
+      loadBookings()
+    } catch (error) {
+      console.error('Failed to mark no show ' + bookingId + ':', error)
+      showToast('Could not mark booking as no show.', 'error')
     }
   }
 
@@ -301,7 +328,7 @@ export default function StationOwnerDashboard() {
 
         var revenueByDate = {}
         bookings
-          .filter(function (b) { return b.status === 'CONFIRMED' || b.status === 'COMPLETED' })
+          .filter(function (b) { return ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED'].includes(b.status) })
           .forEach(function (b) {
             var date = formatDate(b.created_at).split(',')[0]
             revenueByDate[date] = (revenueByDate[date] || 0) + parseFloat(b.amount_charged || 0)
@@ -629,6 +656,65 @@ export default function StationOwnerDashboard() {
               className="p-2 text-gray-500 dark:text-gray-400 hover:text-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
               <FiChevronRight className="w-4 h-4" />
             </button>
+          </div>
+        )}
+      </div>
+
+      {/* ---- BOOKINGS SECTION ---- */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm">
+        <div className="p-5 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Station Bookings</h2>
+        </div>
+        {bookings.length === 0 ? (
+          <div className="text-center py-8">
+            <FiCalendar className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+            <p className="text-sm text-gray-500 dark:text-gray-400">No bookings for your stations yet.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            {bookings.map(function (booking) {
+              var isConfirmed = booking.status === 'CONFIRMED'
+              var isInProgress = booking.status === 'IN_PROGRESS'
+              var isCompleted = booking.status === 'COMPLETED'
+              var stationName = booking.slot_details ? booking.slot_details.station_name : 'Slot #' + booking.slot
+
+              return (
+                <div key={booking.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">{booking.driver_username}</span>
+                      <span className="text-xs text-gray-500">at {stationName}</span>
+                      <span className={[
+                        'px-2 py-0.5 text-xs font-medium rounded-full',
+                        isConfirmed ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400' :
+                        isInProgress ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' :
+                        isCompleted ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' :
+                        'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
+                      ].join(' ')}>
+                        {booking.status}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {formatDate(booking.created_at)} | {formatCurrency(booking.amount_charged)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isConfirmed && (
+                      <button onClick={function () { handleOwnerNoShow(booking.id) }}
+                        className="px-3 py-1.5 text-xs font-medium text-amber-500 hover:text-white hover:bg-amber-500 border border-amber-200 dark:border-amber-800 rounded-lg hover:border-amber-500 transition-all flex items-center gap-1">
+                        <FiXCircle className="w-3.5 h-3.5" /> No Show
+                      </button>
+                    )}
+                    {isInProgress && (
+                      <button onClick={function () { handleOwnerComplete(booking.id) }}
+                        className="px-3 py-1.5 text-xs font-medium text-blue-500 hover:text-white hover:bg-blue-500 border border-blue-200 dark:border-blue-800 rounded-lg hover:border-blue-500 transition-all flex items-center gap-1">
+                        <FiCheckCircle className="w-3.5 h-3.5" /> Force Complete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
