@@ -171,7 +171,7 @@ export default function MapView({ routePlan }) {
     if (!query.trim()) { setSearchSuggestions([]); setShowSearchSuggestions(false); return }
     var [locData, stationData] = await Promise.all([
       searchLocations(query, 5),
-      searchStations(query).then(function (r) { return r.data || [] }).catch(function () { return [] }),
+      searchStations(query, mapRef.current ? mapRef.current.getBounds().toBBoxString() : null).then(function (r) { return r.data || [] }).catch(function () { return [] }),
     ])
     var locResults = (locData || []).map(function (item) { return { _type: 'location', display_name: item.display_name, lat: item.lat, lon: item.lon } })
     var stationResults = stationData.map(function (s) { return { _type: 'station', display_name: s.name + (s.address ? ' — ' + s.address : ''), lat: s.latitude, lng: s.longitude, station: s } })
@@ -185,7 +185,7 @@ export default function MapView({ routePlan }) {
     setLocationQuery(s.display_name); setShowSearchSuggestions(false)
     if (s._type === 'station') {
       var lat = parseFloat(s.lat), lng = parseFloat(s.lng)
-      if (!isNaN(lat) && !isNaN(lng)) { setUserLocation([lat, lng]); if (mapRef.current) mapRef.current.flyTo([lat, lng], 15) }
+      if (!isNaN(lat) && !isNaN(lng)) { setUserLocation([lat, lng]); loadStations(); if (mapRef.current) mapRef.current.flyTo([lat, lng], 15) }
     } else {
       var lat = parseFloat(s.lat), lng = parseFloat(s.lon)
       if (!isNaN(lat) && !isNaN(lng)) { setUserLocation([lat, lng]); loadStations(); if (mapRef.current) mapRef.current.flyTo([lat, lng], 12) }
