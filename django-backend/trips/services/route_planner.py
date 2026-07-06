@@ -2,12 +2,11 @@
 Energy-aware multi-stop route planner.
 
 Algorithm:
-  1. Pre-compute route geometry (segments, cumulative distances) once.
-  2. Preprocess ALL corridor stations: project onto route, sort by
-     cumulative distance, pre-filter by slot availability.
-  3. During battery simulation, walk the sorted station list.
-  4. Score candidates by drive time + charge time (fastest) or
-     cost + time value (cheapest).
+  1. Precompute route geometry (segments, cumulative distances) once.
+  2. Preprocess ALL corridor stations: expand each station into per-slot
+     candidates, project onto route, sort by cumulative distance.
+  3. During battery simulation, walk the sorted candidate list.
+  4. Score candidates by drive time + charge time (fastest_time).
   5. After all stops, call OSRM route endpoint for display geometry.
 """
 
@@ -18,7 +17,6 @@ import threading
 import time
 import logging
 import requests
-import concurrent.futures
 from django.core.cache import cache
 
 
@@ -27,20 +25,30 @@ logger = logging.getLogger(__name__)
 CHARGER_POWER = {
     'DC_ULTRA': 150.0,
     'DC_FAST': 50.0,
-    'AC_FAST': 7.4,
+    'AC_FAST': 22.0,
     'AC_SLOW': 3.3,
 }
 
 SAFETY_BUFFER = 0.15
-SEARCH_TRIGGER_BUFFER = 0.50
+MIN_TRIGGER_RANGE_KM = 180
+MAX_TRIGGER_SOC = 0.50
 SEARCH_RADIUS_KM = 30.0
 AVG_SPEED_KMPH = 80.0
-TIME_VALUE_PER_HOUR = 200
 GST_RATE = 0.18
 OSRM_REQ_PER_SEC = 5
 OSRM_TABLE_TIMEOUT = 5
 OSRM_ROUTE_TIMEOUT = 10
 OSRM_MAX_COORDS = 20
+
+# FIX: small relative buffer (fraction of the energy needed for the next leg)
+# instead of a flat fraction of total battery capacity. This replaces the
+# old absolute floor that forced every stop to charge to ~70% of battery_kwh
+# regardless of vehicle size or actual need.
+MIN_CHARGE_BUFFER_FRACTION = 0.10  # charge at least 10% more than bare minimum needed
+DEFAULT_MAX_CHARGE_KW = 150.0
+DEFAULT_AC_CHARGE_KW = 7.4  # fallback for vehicles with zero DC capability (e.g. MG Comet)
+RANGE_PREFERENCE_WEIGHT = 2.0  # score bonus per km for farthest_reachable (fastest_time tiebreaker)
+AC_SCORE_WEIGHT = 0.35        # multiplier on AC charge time for scoring in Mixed mode (actual time shown stays correct)
 
 
 @dataclass
@@ -60,6 +68,8 @@ class ChargingStop:
     charger_power_kw: float
     cost: float
     detour_km: float
+    projected_lat: float = None
+    projected_lng: float = None
     alternatives: List[dict] = field(default_factory=list)
 
 
@@ -141,7 +151,9 @@ class EnergyAwareRoutePlanner:
     _lock = threading.Lock()
     _last_req_time = 0.0
 
-    def __init__(self, consumption_wh_per_km, battery_kwh, battery_start_percent, **kwargs):
+    def __init__(self, consumption_wh_per_km, battery_kwh, battery_start_percent,
+                 max_charge_kw=DEFAULT_MAX_CHARGE_KW, charging_curve=None,
+                 ac_charge_kw=DEFAULT_AC_CHARGE_KW, **kwargs):
         self.consumption_wh_per_km = consumption_wh_per_km
         self.battery_kwh = battery_kwh
         self.battery_start_percent = battery_start_percent
@@ -153,12 +165,51 @@ class EnergyAwareRoutePlanner:
         self.search_radius = 80.0
         self._consumption_kwh_per_km = self.consumption_wh_per_km / 1000.0
 
+        try:
+            mc = float(max_charge_kw) if max_charge_kw else 0.0
+        except (TypeError, ValueError):
+            mc = 0.0
+        self._ac_only = mc <= 0
+        self.max_charge_kw = mc if mc > 0 else DEFAULT_AC_CHARGE_KW
+
+        try:
+            self.ac_charge_kw = float(ac_charge_kw) if ac_charge_kw else DEFAULT_AC_CHARGE_KW
+        except (TypeError, ValueError):
+            self.ac_charge_kw = DEFAULT_AC_CHARGE_KW
+
+        # Vehicle's charging curve, as returned by VehicleProfile.effective_charging_curve,
+        # is a list of SoC-range segments with a power multiplier, e.g.:
+        #   [{'from_soc': 0, 'to_soc': 20, 'power_factor': 0.8},
+        #    {'from_soc': 20, 'to_soc': 80, 'power_factor': 1.0},
+        #    {'from_soc': 80, 'to_soc': 90, 'power_factor': 0.5},
+        #    {'from_soc': 90, 'to_soc': 100, 'power_factor': 0.2}]
+        # This is NOT a list of (soc, max_kw) points — the earlier version
+        # incorrectly assumed that shape, which crashed the whole request
+        # (dict indexed by integer 0 raises KeyError) every time a
+        # candidate charger was scored. Normalized + sorted ONCE here.
+        self.charging_curve = None
+        if charging_curve:
+            try:
+                normalized = []
+                for seg in charging_curve:
+                    if isinstance(seg, dict):
+                        from_soc = float(seg.get('from_soc'))
+                        to_soc = float(seg.get('to_soc'))
+                        factor = float(seg.get('power_factor', 1.0))
+                    else:
+                        from_soc, to_soc, factor = float(seg[0]), float(seg[1]), float(seg[2])
+                    if to_soc > from_soc and factor > 0:
+                        normalized.append((from_soc, to_soc, factor))
+                if normalized:
+                    self.charging_curve = sorted(normalized, key=lambda s: s[0])
+            except Exception as e:
+                logger.warning("Invalid charging_curve for vehicle, ignoring: %s", e)
+                self.charging_curve = None
+
         self._osrm_table_cache = {}
         self._osrm_table_cache_lock = threading.Lock()
 
-    def _avg_speed(self, strategy):
-        if strategy == 'cheapest':
-            return 76.0
+    def _avg_speed(self):
         return AVG_SPEED_KMPH
 
     def _segment_energy_kwh(self, distance_km):
@@ -172,16 +223,37 @@ class EnergyAwareRoutePlanner:
     def _kwh_from_soc(self, soc):
         return self.battery_kwh * (soc / 100.0)
 
-    def _get_best_slot(self, station):
+    def _get_candidate_slots(self, station, charger_type='all'):
         slots = station.get('slots') or []
         available = [s for s in slots if s.get('status') == 'AVAILABLE']
+
+        # Pass 1 — user's charger type preference
+        if charger_type == 'dc':
+            available = [s for s in available if str(s.get('slot_type', '')).startswith('DC')]
+        elif charger_type == 'ac':
+            available = [s for s in available if str(s.get('slot_type', '')).startswith('AC')]
+
+        # Pass 2 — vehicle hardware restriction (e.g. MG Comet cannot use DC)
+        if self._ac_only:
+            available = [s for s in available if str(s.get('slot_type', '')).startswith('AC')]
+
         if not available:
-            return None
+            return []
+
         available.sort(key=lambda s: (
             {'DC_ULTRA': 4, 'DC_FAST': 3, 'AC_FAST': 2, 'AC_SLOW': 1}.get(s.get('slot_type', ''), 0),
             CHARGER_POWER.get(s.get('slot_type', ''), 0)
         ), reverse=True)
-        return available[0]
+
+        logger.info(
+            "FILTER: station=%s charger_type=%s _ac_only=%s returned=%s",
+            station.get('id'), charger_type, self._ac_only,
+            [s.get('slot_type') for s in available] if available else None,
+        )
+
+        if charger_type == 'all':
+            return available
+        return [available[0]]
 
     def _rate_limit(self):
         with self._lock:
@@ -336,13 +408,73 @@ class EnergyAwareRoutePlanner:
             if d < best_d:
                 best_d = d
                 best_i = i
-        return best_i, cum_km[best_i]
+        return best_i, cum_km[best_i], route_coords[best_i][0], route_coords[best_i][1]
 
-    def _calc_charge_time(self, charge_kwh, power_kw):
+    def _charge_factor_at_soc(self, soc_percent):
+        """
+        Look up the power_factor for the curve segment containing soc_percent.
+        self.charging_curve is a sorted list of (from_soc, to_soc, factor)
+        tuples, normalized once in __init__. Returns 1.0 (no derating) if
+        no curve is configured or soc_percent falls outside all segments.
+        """
+        if not self.charging_curve:
+            return 1.0
+        for from_soc, to_soc, factor in self.charging_curve:
+            if from_soc <= soc_percent < to_soc:
+                return factor
+        if soc_percent >= self.charging_curve[-1][1]:
+            return self.charging_curve[-1][2]
+        if soc_percent < self.charging_curve[0][0]:
+            return self.charging_curve[0][2]
+        return 1.0
+
+    def _calc_charge_time(self, charge_kwh, power_kw, arrival_soc=None, departure_soc=None):
+        """
+        Computes charge time capped by both the station's power output AND
+        the vehicle's own max charging power (self.max_charge_kw), and if a
+        charging_curve is available, integrates across each SoC segment
+        the stop actually passes through — since a single stop commonly
+        spans multiple power bands (e.g. charging 15% -> 85% crosses the
+        20% and 80% breakpoints in the default curve), using only the
+        arrival SoC's factor would misrepresent real charge time,
+        especially for stops that charge deep into the 80-100% taper zone.
+        """
         if power_kw <= 0:
             return 1800
-        eff_power = min(power_kw, 350.0)
-        return (charge_kwh / eff_power) * 3600
+
+        vehicle_cap = self.ac_charge_kw if power_kw <= 25 else self.max_charge_kw
+        flat_cap = min(power_kw, vehicle_cap, 350.0)
+        if flat_cap <= 0:
+            return 1800
+
+        if not self.charging_curve or arrival_soc is None or departure_soc is None or departure_soc <= arrival_soc:
+            return (charge_kwh / flat_cap) * 3600
+
+        kwh_per_percent = self.battery_kwh / 100.0
+        breakpoints = sorted(set(
+            [arrival_soc, departure_soc] +
+            [b for seg in self.charging_curve for b in (seg[0], seg[1])
+             if arrival_soc < b < departure_soc]
+        ))
+
+        total_seconds = 0.0
+        for i in range(len(breakpoints) - 1):
+            seg_start = breakpoints[i]
+            seg_end = breakpoints[i + 1]
+            seg_delta = seg_end - seg_start
+            if seg_delta <= 0:
+                continue
+            mid_soc = (seg_start + seg_end) / 2.0
+            factor = self._charge_factor_at_soc(mid_soc)
+            vehicle_cap = self.ac_charge_kw if power_kw <= 25 else self.max_charge_kw
+            eff_power = min(power_kw, vehicle_cap * factor, 350.0)
+            if eff_power <= 0:
+                eff_power = flat_cap
+            seg_kwh = seg_delta * kwh_per_percent
+            total_seconds += (seg_kwh / eff_power) * 3600
+
+        return total_seconds
+
 
     def _compute_route_geometry(self, route_coords, total_distance_m):
         n = len(route_coords)
@@ -362,10 +494,8 @@ class EnergyAwareRoutePlanner:
         return seg_dists, cum_km, total_km, n
 
     def plan_routes(self, route_coords, total_distance_m, stations,
-                    origin_name='Origin', dest_name='Destination'):
-        strategies = ['fastest_time', 'cheapest']
-        plans = []
-
+                    origin_name='Origin', dest_name='Destination',
+                    charger_type='all'):
         seg_dists, cum_km, total_km, n = self._compute_route_geometry(route_coords, total_distance_m)
 
         _pre_ts = time.time()
@@ -387,85 +517,60 @@ class EnergyAwareRoutePlanner:
                 continue
             if not (min_clat_pre <= lat <= max_clat_pre and min_clng_pre <= lng <= max_clng_pre):
                 continue
-            slot = self._get_best_slot(st)
-            if not slot:
+            slots = self._get_candidate_slots(st, charger_type)
+            if not slots:
                 continue
-            power = CHARGER_POWER.get(slot.get('slot_type', ''), 7.4)
-            rate = float(slot.get('rate_per_kwh', 10) or 10)
-            route_idx, cum_dist = self._project_to_route(lat, lng, route_coords, cum_km)
+            route_idx, cum_dist, proj_lat, proj_lng = self._project_to_route(lat, lng, route_coords, cum_km)
             detour = _min_dist_to_route(lat, lng, route_coords)
-            precomputed.append({
-                'st': st, 'slot': slot, 'st_lat': lat, 'st_lng': lng,
-                'cum_dist': cum_dist, 'detour_km': round(detour, 2),
-                'power': power, 'rate': rate, 'route_idx': route_idx,
-            })
+            for slot in slots:
+                power = CHARGER_POWER.get(slot.get('slot_type', ''), 7.4)
+                rate = float(slot.get('rate_per_kwh', 10) or 10)
+                precomputed.append({
+                    'st': st, 'slot': slot, 'st_lat': lat, 'st_lng': lng,
+                    'proj_lat': proj_lat, 'proj_lng': proj_lng,
+                    'cum_dist': cum_dist, 'detour_km': round(detour, 2),
+                    'power': power, 'rate': rate, 'route_idx': route_idx,
+                })
 
         precomputed.sort(key=lambda x: x['cum_dist'])
-        pc_lookup = {p['st']['id']: p for p in precomputed}
         _pre_time = time.time() - _pre_ts
         logger.info("========== ROUTE PREPROCESS ========")
-        logger.info("  Corridor stations:  %d", len(precomputed))
-        logger.info("  Project + sort:     %.3f sec", _pre_time)
+        logger.info("  Candidate stations:  %d", len(precomputed))
+        logger.info("  Project + sort:      %.3f sec", _pre_time)
         logger.info("====================================")
 
-        def _run_strat(s):
-            p = self.plan_route(
+        charge_pcts = [0.80, 0.85, 0.90, 0.95, 1.0]
+        plan = None
+        for pct in charge_pcts:
+            plan = self.plan_route(
                 route_coords, total_distance_m, stations,
                 origin_name=origin_name, dest_name=dest_name,
-                strategy=s, max_charge_pct=0.80,
+                strategy='fastest_time', max_charge_pct=pct,
                 seg_dists=seg_dists, cum_km=cum_km,
                 precomputed_stations=precomputed,
-                precomputed_lookup=pc_lookup,
+                charger_type=charger_type,
             )
-            return p
+            if not plan.note:
+                break
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            futures = {pool.submit(_run_strat, s): s for s in strategies}
-            for f in concurrent.futures.as_completed(futures):
-                plans.append(f.result())
-
-        plan_map = {p.strategy: p for p in plans}
-        fastest_plan = plan_map.get('fastest_time')
-        cheapest_plan = plan_map.get('cheapest')
-
-        selected = fastest_plan
+        plan.alternatives = []
 
         waypoints = [(route_coords[0][0], route_coords[0][1])]
-        for stop in selected.stops:
+        for stop in plan.stops:
             waypoints.append((stop.lat, stop.lng))
         waypoints.append((route_coords[-1][0], route_coords[-1][1]))
         wg = self._osrm_route_waypoints(waypoints)
         if wg:
-            selected.waypoint_geometry = wg
+            plan.waypoint_geometry = wg
 
-        alternatives = []
-        p = cheapest_plan
-        if p and id(p) != id(selected):
-            alternatives.append({
-                'label': 'Cheapest',
-                'strategy': p.strategy,
-                'total_drive_time_seconds': p.total_drive_time_seconds,
-                'total_charge_time_seconds': p.total_charge_time_seconds,
-                'total_trip_time_seconds': p.total_trip_time_seconds,
-                'total_cost': p.total_cost,
-                'stop_count': len(p.stops),
-                'final_soc_percent': p.final_soc_percent,
-                'total_distance_km': p.total_distance_km,
-                'stops': p.stops,
-                'legs': p.legs,
-                'total_energy_consumed_kwh': p.total_energy_consumed_kwh,
-                'note': p.note,
-            })
-        return {
-            'selected': selected,
-            'alternatives': alternatives,
-        }
+        return plan
 
     def plan_route(self, route_coords, total_distance_m, stations,
                    origin_name='Origin', dest_name='Destination',
                    strategy='fastest_time', max_charge_pct=0.80,
                    seg_dists=None, cum_km=None,
-                   precomputed_stations=None, precomputed_lookup=None):
+                   precomputed_stations=None,
+                   charger_type='all'):
 
         total_km = total_distance_m / 1000.0
         usable_km = (self.battery_kwh * (max_charge_pct - SAFETY_BUFFER)) / self._consumption_kwh_per_km
@@ -481,6 +586,12 @@ class EnergyAwareRoutePlanner:
 
         if precomputed_stations is None:
             raise ValueError("plan_route requires precomputed_stations (call plan_routes instead)")
+
+        if not precomputed_stations:
+            type_label = {'dc': 'DC', 'ac': 'AC', 'all': 'available'}.get(charger_type, charger_type)
+            return RoutePlan(total_km, 0, 0, 0, 0, [], [], self.battery_start_percent,
+                             origin_name, dest_name,
+                             f'No {type_label} charging stations found along this route')
 
         if seg_dists is None or cum_km is None:
             seg_dists = []
@@ -528,7 +639,10 @@ class EnergyAwareRoutePlanner:
                 waypoints.append((dest_lat, dest_lng))
                 break
 
-            trigger_kwh = self._usable_kwh * SEARCH_TRIGGER_BUFFER
+            trigger_kwh = min(
+                (MIN_TRIGGER_RANGE_KM / 1000.0) * self.consumption_wh_per_km * (1 + self.safety_buffer),
+                self.battery_kwh * MAX_TRIGGER_SOC,
+            )
             sim_battery = remaining_kwh
             found_charge = False
 
@@ -558,7 +672,7 @@ class EnergyAwareRoutePlanner:
                     remaining_kwh = sim_battery
                     range_left = (remaining_kwh / self.consumption_wh_per_km) * 1000
 
-                    look_km = max(150, range_left * 1.5)
+                    look_km = max(200, range_left * 2.5)
                     search_end_cum = min(total_km, current_cum + look_km)
 
                     while pc_ptr < len(precomputed_stations) and precomputed_stations[pc_ptr]['cum_dist'] <= current_cum:
@@ -569,8 +683,18 @@ class EnergyAwareRoutePlanner:
                     while j < len(precomputed_stations) and precomputed_stations[j]['cum_dist'] <= search_end_cum:
                         ps = precomputed_stations[j]
                         if ps['detour_km'] <= self.search_radius:
-                            candidates.append((ps['st'], ps['slot'], ps['detour_km'], ps['power'], ps['rate']))
+                            candidates.append((ps['st'], ps['slot'], ps['detour_km'], ps['power'], ps['rate'], ps['cum_dist'], ps.get('proj_lat'), ps.get('proj_lng')))
                         j += 1
+
+                    if not candidates:
+                        # Expand search window to entire remaining route before draining battery
+                        expanded_search_end = total_km
+                        j2 = pc_ptr
+                        while j2 < len(precomputed_stations) and precomputed_stations[j2]['cum_dist'] <= expanded_search_end:
+                            ps = precomputed_stations[j2]
+                            if ps['detour_km'] <= self.search_radius:
+                                candidates.append((ps['st'], ps['slot'], ps['detour_km'], ps['power'], ps['rate'], ps['cum_dist'], ps.get('proj_lat'), ps.get('proj_lng')))
+                            j2 += 1
 
                     if not candidates:
                         sim_battery = max(0, projected_battery)
@@ -580,8 +704,7 @@ class EnergyAwareRoutePlanner:
 
                     cand_data = []
                     for c in candidates:
-                        ps = precomputed_lookup[c[0]['id']]
-                        stop_cum = ps['cum_dist']
+                        stop_cum = c[5]
                         if stop_cum <= current_cum:
                             continue
                         route_dist_km = max(0.1, stop_cum - current_cum)
@@ -597,11 +720,11 @@ class EnergyAwareRoutePlanner:
 
                     scored = []
                     for c_tuple, stop_cum, route_dist_km, leg_dist_km in cand_data:
-                        st, slot, detour, power, rate = c_tuple
+                        st, slot, detour, power, rate, _, stop_proj_lat, stop_proj_lng = c_tuple
                         st_lat = float(st['latitude'])
                         st_lng = float(st['longitude'])
 
-                        drive_time_s = (leg_dist_km / self._avg_speed(strategy)) * 3600
+                        drive_time_s = (leg_dist_km / self._avg_speed()) * 3600
 
                         detour_actual = max(0, leg_dist_km - _haversine_km(current_lat, current_lng, st_lat, st_lng))
                         if detour_actual > self.max_detour_km:
@@ -617,25 +740,53 @@ class EnergyAwareRoutePlanner:
                         arrival_soc = self._soc_from_kwh(arrival_kwh)
                         km_after = total_km - stop_cum
 
+                        # FIX: this is the core bug fix. Previously:
+                        #   target_dep_kwh = max(target_dep_kwh, self.battery_kwh * (max_charge_pct - 0.10))
+                        # forced every stop to charge to at least 70% of the
+                        # vehicle's TOTAL battery capacity in absolute kWh,
+                        # regardless of how much energy was actually needed
+                        # to complete the remaining trip. For large-battery
+                        # vehicles (e.g. 80-90 kWh) this meant charging to
+                        # 56-63 kWh minimum at every single stop even when
+                        # only a small top-up was required - directly
+                        # inflating charge time for high-range vehicles.
+                        #
+                        # New logic: charge only to what's needed for the
+                        # remaining distance (with the existing safety
+                        # buffer), plus a small relative buffer to avoid
+                        # excessive stop-chaining. Capped at max_charge_pct
+                        # of battery as before.
                         max_dep_kwh = self.battery_kwh * max_charge_pct
                         energy_needed_for_leg = self._segment_energy_kwh(km_after) * (1 + self.safety_buffer)
                         target_dep_kwh = min(energy_needed_for_leg, max_dep_kwh)
-                        target_dep_kwh = max(target_dep_kwh, self.battery_kwh * (max_charge_pct - 0.10))
+                        # Small relative buffer instead of absolute battery-fraction floor:
+                        target_dep_kwh = target_dep_kwh * (1 + MIN_CHARGE_BUFFER_FRACTION)
+                        target_dep_kwh = min(target_dep_kwh, max_dep_kwh)
                         charge_kwh = max(0.0, target_dep_kwh - arrival_kwh)
 
                         if charge_kwh < 2.0:
                             continue
 
-                        charge_s = self._calc_charge_time(charge_kwh, power)
-                        cost_stop = charge_kwh * rate * (1 + GST_RATE)
                         dep_kwh = arrival_kwh + charge_kwh
                         dep_soc = self._soc_from_kwh(dep_kwh)
 
-                        if strategy == 'fastest_time':
-                            score = -(drive_time_s + charge_s)
-                        else:
-                            effective_cost = cost_stop + ((drive_time_s + charge_s) / 3600) * TIME_VALUE_PER_HOUR
-                            score = -effective_cost
+                        # Pass both arrival and departure SoC so the curve
+                        # integration (if a curve is configured) accounts
+                        # for every power band this stop actually charges
+                        # through, not just the arrival point.
+                        charge_s = self._calc_charge_time(
+                            charge_kwh, power,
+                            arrival_soc=arrival_soc, departure_soc=dep_soc,
+                        )
+                        cost_stop = charge_kwh * rate * (1 + GST_RATE)
+
+                        detour_time = detour * 3600 / self._avg_speed() * 2
+                        scoring_charge_s = charge_s * (
+                            AC_SCORE_WEIGHT
+                            if charger_type == 'all' and str(slot.get('slot_type', '')).startswith('AC')
+                            else 1.0
+                        )
+                        score = -(drive_time_s + scoring_charge_s + detour_time) + stop_cum * RANGE_PREFERENCE_WEIGHT
 
                         scored.append({
                             'score': score,
@@ -653,6 +804,8 @@ class EnergyAwareRoutePlanner:
                             'dep_kwh': dep_kwh,
                             'dep_soc': dep_soc,
                             'stop_cum': stop_cum,
+                            'proj_lat': stop_proj_lat,
+                            'proj_lng': stop_proj_lng,
                         })
 
                     if not scored:
@@ -680,11 +833,13 @@ class EnergyAwareRoutePlanner:
                     st_lat = float(st['latitude'])
                     st_lng = float(st['longitude'])
                     stop_cum = best['stop_cum']
+                    stop_proj_lat = best.get('proj_lat')
+                    stop_proj_lng = best.get('proj_lng')
 
                     drive_km = stop_cum - last_stop_cum
 
                     if drive_km > 0:
-                        leg_drive_s = (drive_km / self._avg_speed(strategy)) * 3600
+                        leg_drive_s = (drive_km / self._avg_speed()) * 3600
                         legs.append(TripLeg(
                             leg_index=len(legs),
                             start_name=last_leg_start,
@@ -698,12 +853,32 @@ class EnergyAwareRoutePlanner:
                     last_leg_start = stop_label
                     last_leg_soc = dep_soc
 
+                    slot_alternatives = []
+                    if charger_type == 'all' and st.get('slots'):
+                        for s in st['slots']:
+                            if s.get('id') != slot.get('id') and s.get('status') == 'AVAILABLE':
+                                alt_power = CHARGER_POWER.get(s.get('slot_type', ''), 7.4)
+                                alt_rate = float(s.get('rate_per_kwh', 10) or 10)
+                                alt_charge_s = self._calc_charge_time(
+                                    charge_kwh, alt_power,
+                                    arrival_soc=arrival_soc, departure_soc=dep_soc,
+                                )
+                                alt_cost = charge_kwh * alt_rate * (1 + GST_RATE)
+                                slot_alternatives.append({
+                                    'slot_type': s.get('slot_type', ''),
+                                    'charger_power_kw': alt_power,
+                                    'charge_time_seconds': round(alt_charge_s),
+                                    'cost': round(alt_cost, 2),
+                                    'rate_per_kwh': alt_rate,
+                                })
+
                     stops.append(ChargingStop(
                         stop_index=len(stops) + 1,
                         station_id=st['id'],
                         station_name=st.get('name', '') or st.get('address', ''),
                         address=st.get('address', ''),
                         lat=st_lat, lng=st_lng,
+                        projected_lat=stop_proj_lat, projected_lng=stop_proj_lng,
                         distance_from_start_km=round(stop_cum, 1),
                         arrival_soc_percent=round(arrival_soc, 1),
                         departure_soc_percent=round(dep_soc, 1),
@@ -713,6 +888,7 @@ class EnergyAwareRoutePlanner:
                         charger_power_kw=power,
                         cost=round(cost_stop, 2),
                         detour_km=detour,
+                        alternatives=slot_alternatives,
                     ))
 
                     stop_route_idx = 0
@@ -759,7 +935,7 @@ class EnergyAwareRoutePlanner:
         final_km = total_km - last_stop_cum
         final_kwh = max(0, remaining_kwh - self._segment_energy_kwh(final_km)) if final_km > 0 else remaining_kwh
         if final_km > 0:
-            final_s = (final_km / self._avg_speed(strategy)) * 3600
+            final_s = (final_km / self._avg_speed()) * 3600
             final_soc = self._soc_from_kwh(final_kwh)
             logger.info("[%s] Final leg: remaining_kwh=%.1f final_km=%.1f final_kwh=%.1f final_soc=%.1f%% n_stops=%d",
                         strategy, remaining_kwh, final_km, final_kwh, final_soc, len(stops))
@@ -793,7 +969,9 @@ class EnergyAwareRoutePlanner:
             note = f'Trip requires more charging stops than supported ({max_stops}). Route may not be fully feasible with available charging infrastructure.'
         elif _dead_end and stops:
             last_km = max(s.distance_from_start_km for s in stops)
-            note = f'No charging station found between km {last_km:.0f} and the destination - trip not feasible with current vehicle'
+            type_label = {'dc': 'DC', 'ac': 'AC', 'all': ''}.get(charger_type, '')
+            prefix = type_label + ' charging station' if type_label else 'Charging station'
+            note = f'No {prefix} found between km {last_km:.0f} and the destination - trip not feasible with current vehicle'
 
         plan = RoutePlan(
             total_distance_km=round(max(sum(l.distance_km for l in legs), total_km), 1),

@@ -7,16 +7,19 @@ class VehicleProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'make', 'model', 'year', 'battery_kwh',
             'consumption_wh_per_km', 'fast_charge_kw', 'ac_charge_kw',
-            'is_builtin', 'created_at',
+            'charging_curve', 'is_builtin', 'created_at',
         ]
         read_only_fields = ['id', 'is_builtin', 'created_at']
 
 class CreateVehicleSerializer(serializers.ModelSerializer):
+    charging_curve = serializers.JSONField(required=False)
+
     class Meta:
         model = VehicleProfile
         fields = [
             'make', 'model', 'year', 'battery_kwh',
             'consumption_wh_per_km', 'fast_charge_kw', 'ac_charge_kw',
+            'charging_curve',
         ]
 
     def create(self, validated_data):

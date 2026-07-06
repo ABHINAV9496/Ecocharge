@@ -31,6 +31,11 @@ class TripPlanRequestSerializer(serializers.Serializer):
     battery_start_percent = serializers.FloatField(min_value=0, max_value=100)
     origin_name = serializers.CharField(required=False, default='Origin')
     dest_name = serializers.CharField(required=False, default='Destination')
+    charger_type = serializers.ChoiceField(
+        choices=['all', 'dc', 'ac'],
+        default='all',
+        required=False,
+    )
 
 
 class WeatherInfoSerializer(serializers.Serializer):
@@ -48,6 +53,8 @@ class TripPlanStopSerializer(serializers.Serializer):
     address = serializers.CharField()
     lat = serializers.FloatField()
     lng = serializers.FloatField()
+    projected_lat = serializers.FloatField(required=False, allow_null=True)
+    projected_lng = serializers.FloatField(required=False, allow_null=True)
     distance_from_start_km = serializers.FloatField()
     arrival_soc_percent = serializers.FloatField()
     departure_soc_percent = serializers.FloatField()
@@ -83,7 +90,6 @@ class RoutePlanAlternativeSerializer(serializers.Serializer):
     strategy = serializers.CharField()
     total_drive_time_seconds = serializers.FloatField()
     total_charge_time_seconds = serializers.FloatField()
-    total_rest_breaks_seconds = serializers.FloatField(required=False, default=0)
     total_trip_time_seconds = serializers.FloatField(required=False, default=0)
     total_cost = serializers.FloatField()
     stop_count = serializers.IntegerField()
@@ -99,7 +105,6 @@ class TripPlanResponseSerializer(serializers.Serializer):
     total_distance_km = serializers.FloatField()
     total_drive_time_seconds = serializers.FloatField()
     total_charge_time_seconds = serializers.FloatField()
-    total_rest_breaks_seconds = serializers.FloatField(required=False, default=0)
     total_trip_time_seconds = serializers.FloatField(required=False, default=0)
     total_cost = serializers.FloatField()
     total_energy_consumed_kwh = serializers.FloatField()

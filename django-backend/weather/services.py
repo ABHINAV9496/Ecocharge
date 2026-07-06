@@ -300,57 +300,57 @@ class WeatherService:
 
         return weather
 
-        @classmethod
-        def get_route_weather(cls, route_coords):
-            if not route_coords:
-                return {'samples': [], 'units': {}}
+    @classmethod
+    def get_route_weather(cls, route_coords):
+        if not route_coords:
+            return {'samples': [], 'units': {}}
 
-            SAMPLE_SIZE = 8
-            step = max(1, len(route_coords) // SAMPLE_SIZE)
-            indices = list(range(0, len(route_coords), step))
-            if indices[-1] != len(route_coords) - 1:
-                indices.append(len(route_coords) - 1)
+        SAMPLE_SIZE = 8
+        step = max(1, len(route_coords) // SAMPLE_SIZE)
+        indices = list(range(0, len(route_coords), step))
+        if indices[-1] != len(route_coords) - 1:
+            indices.append(len(route_coords) - 1)
 
-            samples = []
-            current_weather = None
+        samples = []
+        current_weather = None
 
-            for idx in indices:
-                coord = route_coords[idx]
-                lat, lng = coord[0], coord[1]
-                if current_weather is None:
+        for idx in indices:
+            coord = route_coords[idx]
+            lat, lng = coord[0], coord[1]
+            if current_weather is None:
+                current_weather = cls.get_current_weather(lat, lng)
+            else:
+                try:
                     current_weather = cls.get_current_weather(lat, lng)
-                else:
-                    try:
-                        current_weather = cls.get_current_weather(lat, lng)
-                    except WeatherServiceError:
-                        pass
+                except WeatherServiceError:
+                    pass
 
-                samples.append({
-                    'index': idx,
-                    'latitude': lat,
-                    'longitude': lng,
-                    'temperature': current_weather.get('temperature'),
-                    'description': current_weather.get('description'),
-                    'icon': current_weather.get('icon'),
-                    'precipitation_probability': cls._get_precip_prob(lat, lng),
-                    'wind_speed': current_weather.get('wind_speed'),
-                    'weather_code': current_weather.get('weather_code'),
-                })
+            samples.append({
+                'index': idx,
+                'latitude': lat,
+                'longitude': lng,
+                'temperature': current_weather.get('temperature'),
+                'description': current_weather.get('description'),
+                'icon': current_weather.get('icon'),
+                'precipitation_probability': cls._get_precip_prob(lat, lng),
+                'wind_speed': current_weather.get('wind_speed'),
+                'weather_code': current_weather.get('weather_code'),
+            })
 
-            return {'samples': samples}
+        return {'samples': samples}
 
-        @classmethod
-        def _get_precip_prob(cls, latitude, longitude):
-            try:
-                data = cls._get(f'{OPEN_METEO_BASE}/forecast', {
-                    'latitude': latitude,
-                    'longitude': longitude,
-                    'hourly': 'precipitation_probability',
-                    'forecast_hours': 1,
-                    'timezone': 'auto',
-                })
-                hourly = data.get('hourly', {})
-                probs = hourly.get('precipitation_probability', [])
-                return probs[0] if probs else 0
-            except WeatherServiceError:
-                return 0
+    @classmethod
+    def _get_precip_prob(cls, latitude, longitude):
+        try:
+            data = cls._get(f'{OPEN_METEO_BASE}/forecast', {
+                'latitude': latitude,
+                'longitude': longitude,
+                'hourly': 'precipitation_probability',
+                'forecast_hours': 1,
+                'timezone': 'auto',
+            })
+            hourly = data.get('hourly', {})
+            probs = hourly.get('precipitation_probability', [])
+            return probs[0] if probs else 0
+        except WeatherServiceError:
+            return 0
