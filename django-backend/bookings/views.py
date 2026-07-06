@@ -191,6 +191,161 @@ class BookingDetailView(APIView):
 
 
 @extend_schema(tags=['Bookings'])
+class BookingStartView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            booking = Booking.objects.get(pk=pk)
+        except Booking.DoesNotExist:
+            return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if booking.driver != request.user:
+            return Response({'error': 'You can only start your own charging'}, status=status.HTTP_403_FORBIDDEN)
+
+        if booking.status != 'CONFIRMED':
+            return Response({'error': 'Booking must be CONFIRMED to start charging'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            booking.status = 'IN_PROGRESS'
+            booking.save()
+
+        create_notification(
+            user=request.user,
+            notification_type='BOOKING',
+            title='Charging Started',
+            message=f'Charging started at {booking.slot.station.name}',
+            link=f'/bookings',
+        )
+
+        return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=['Bookings'])
+class BookingCompleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            booking = Booking.objects.get(pk=pk)
+        except Booking.DoesNotExist:
+            return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if booking.driver != request.user:
+            return Response({'error': 'You can only complete your own charging'}, status=status.HTTP_403_FORBIDDEN)
+
+        if booking.status != 'IN_PROGRESS':
+            return Response({'error': 'Booking must be IN_PROGRESS to complete charging'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            slot = booking.slot
+            slot.status = 'AVAILABLE'
+            slot.save()
+
+            booking.status = 'COMPLETED'
+            booking.save()
+
+        try:
+            from wallet.views import get_wallet_balance
+            from wallet.models import WalletTransaction
+            balance = get_wallet_balance(request.user)
+            amount = float(booking.amount_charged)
+            if balance >= amount:
+                with transaction.atomic():
+                    new_balance = balance - amount
+                    WalletTransaction.objects.create(
+                        user=request.user,
+                        transaction_type='DEDUCTION',
+                        amount=amount,
+                        balance_after=new_balance,
+                        description=f'Charging at {booking.slot.station.name} - Booking #{booking.id}'
+                    )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning('Wallet deduction failed: %s', e)
+
+        create_notification(
+            user=request.user,
+            notification_type='BOOKING',
+            title='Charging Completed',
+            message=f'Charging completed at {booking.slot.station.name}. ₹{booking.amount_charged} deducted from wallet.',
+            link=f'/bookings',
+        )
+
+        return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=['Bookings'])
+class BookingOwnerCompleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            booking = Booking.objects.get(pk=pk)
+        except Booking.DoesNotExist:
+            return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if booking.slot.station.owner != request.user and request.user.role != 'SUPER_ADMIN':
+            return Response({'error': 'You can only manage bookings on your own stations'}, status=status.HTTP_403_FORBIDDEN)
+
+        if booking.status not in ['CONFIRMED', 'IN_PROGRESS']:
+            return Response({'error': 'Booking is not in an active state'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            slot = booking.slot
+            slot.status = 'AVAILABLE'
+            slot.save()
+
+            booking.status = 'COMPLETED'
+            booking.save()
+
+        create_notification(
+            user=booking.driver,
+            notification_type='BOOKING',
+            title='Charging Force Completed',
+            message=f'Your charging session at {booking.slot.station.name} was marked complete by the station owner.',
+            link=f'/bookings',
+        )
+
+        return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=['Bookings'])
+class BookingOwnerNoShowView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            booking = Booking.objects.get(pk=pk)
+        except Booking.DoesNotExist:
+            return Response({'error': 'Booking not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if booking.slot.station.owner != request.user and request.user.role != 'SUPER_ADMIN':
+            return Response({'error': 'You can only manage bookings on your own stations'}, status=status.HTTP_403_FORBIDDEN)
+
+        if booking.status != 'CONFIRMED':
+            return Response({'error': 'Only CONFIRMED bookings can be marked as no show'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            slot = booking.slot
+            slot.status = 'AVAILABLE'
+            slot.save()
+
+            booking.status = 'CANCELLED'
+            booking.save()
+
+        create_notification(
+            user=booking.driver,
+            notification_type='BOOKING',
+            title='Booking Marked No Show',
+            message=f'Your booking at {booking.slot.station.name} was cancelled because you did not show up.',
+            link=f'/bookings',
+        )
+
+        return Response({'message': 'Booking marked as no show.'}, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=['Bookings'])
 class HeatmapView(APIView):
     permission_classes = [AllowAny]
 

@@ -116,10 +116,10 @@ CONNECTION_TYPE_MAP = {
 }
 
 SLOT_TYPE_RATES = {
-    "AC_SLOW": (6.0, 9.0),
-    "AC_FAST": (9.0, 13.0),
-    "DC_FAST": (13.0, 17.0),
-    "DC_ULTRA": (17.0, 22.0),
+    "AC_SLOW": (8.0, 12.0),
+    "AC_FAST": (12.0, 18.0),
+    "DC_FAST": (20.0, 30.0),
+    "DC_ULTRA": (25.0, 35.0),
 }
 
 
