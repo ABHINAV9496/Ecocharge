@@ -4,8 +4,8 @@ import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, LayersCon
 import MarkerClusterGroup from 'react-leaflet-cluster'
 
 import L from 'leaflet'
-import { FiSearch, FiCrosshair, FiBatteryCharging, FiRefreshCw, FiNavigation, FiArrowRight, FiX, FiClock, FiDollarSign, FiZap, FiInfo, FiFilter, FiMap, FiExternalLink, FiBookOpen, FiWifi, FiCoffee, FiShield } from 'react-icons/fi'
-import { getStations } from '../../api/stations'
+import { FiSearch, FiCrosshair, FiBatteryCharging, FiRefreshCw, FiArrowRight, FiX, FiClock, FiDollarSign, FiZap, FiInfo, FiFilter, FiMap, FiExternalLink, FiBookOpen } from 'react-icons/fi'
+import { getStations, searchStations } from '../../api/stations'
 import { searchLocations } from '../../api/geocode'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
@@ -77,7 +77,7 @@ export default function MapView({ routePlan }) {
   var [searchSuggestions, setSearchSuggestions] = useState([])
   var [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
   var [showUserMenu, setShowUserMenu] = useState(false)
-  var [amenityFilter, setAmenityFilter] = useState([])
+  var [isLocating, setIsLocating] = useState(false)
   var [slotTypeFilter, setSlotTypeFilter] = useState([])
   var [showFilterPanel, setShowFilterPanel] = useState(false)
   var [showRoutePopup, setShowRoutePopup] = useState(false)
@@ -156,25 +156,41 @@ export default function MapView({ routePlan }) {
   }, [])
 
   function findMyLocation() {
-    if (navigator.geolocation) { navigator.geolocation.getCurrentPosition(function (position) { var loc = [position.coords.latitude, position.coords.longitude]; setUserLocation(loc); loadStations(); if (mapRef.current) mapRef.current.flyTo(loc, 13) }) }
+    if (navigator.geolocation) { setIsLocating(true); navigator.geolocation.getCurrentPosition(function (position) { var loc = [position.coords.latitude, position.coords.longitude]; setUserLocation(loc); loadStations(); if (mapRef.current) mapRef.current.flyTo(loc, 13); setIsLocating(false) }, function () { setIsLocating(false) }) }
   }
 
   function handleRetry() { loadStations() }
-  function handleViewportChange() { if (debounceTimer.current) clearTimeout(debounceTimer.current); debounceTimer.current = setTimeout(function () { loadStations() }, 400) }
+  function handleViewportChange() { if (debounceTimer.current) clearTimeout(debounceTimer.current); debounceTimer.current = setTimeout(function () { loadStations() }, 800) }
 
   async function searchLocation() {
     if (!locationQuery.trim()) return; var data = await searchLocations(locationQuery, 1)
     if (data && data.length > 0) { var lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon); if (!isNaN(lat) && !isNaN(lng)) { setUserLocation([lat, lng]); loadStations(); if (mapRef.current) mapRef.current.flyTo([lat, lng], 12) } }
   }
 
-  async function geocodeSearch(query) {
+  async function suggestSearch(query) {
     if (!query.trim()) { setSearchSuggestions([]); setShowSearchSuggestions(false); return }
-    var data = await searchLocations(query, 5); setSearchSuggestions(data); setShowSearchSuggestions(data.length > 0)
+    var [locData, stationData] = await Promise.all([
+      searchLocations(query, 5),
+      searchStations(query).then(function (r) { return r.data || [] }).catch(function () { return [] }),
+    ])
+    var locResults = (locData || []).map(function (item) { return { _type: 'location', display_name: item.display_name, lat: item.lat, lon: item.lon } })
+    var stationResults = stationData.map(function (s) { return { _type: 'station', display_name: s.name + (s.address ? ' — ' + s.address : ''), lat: s.latitude, lng: s.longitude, station: s } })
+    var merged = locResults.concat(stationResults).slice(0, 8)
+    setSearchSuggestions(merged); setShowSearchSuggestions(merged.length > 0)
   }
 
-  function handleLocationInput(value) { setLocationQuery(value); if (searchTimer.current) clearTimeout(searchTimer.current); searchTimer.current = setTimeout(function () { geocodeSearch(value) }, 400) }
+  function handleLocationInput(value) { setLocationQuery(value); if (searchTimer.current) clearTimeout(searchTimer.current); searchTimer.current = setTimeout(function () { suggestSearch(value) }, 400) }
 
-  function selectSearchSuggestion(s) { setLocationQuery(s.display_name); setShowSearchSuggestions(false); var lat = parseFloat(s.lat), lng = parseFloat(s.lon); setUserLocation([lat, lng]); loadStations(); if (mapRef.current) mapRef.current.flyTo([lat, lng], 12) }
+  function selectSearchSuggestion(s) {
+    setLocationQuery(s.display_name); setShowSearchSuggestions(false)
+    if (s._type === 'station') {
+      var lat = parseFloat(s.lat), lng = parseFloat(s.lng)
+      if (!isNaN(lat) && !isNaN(lng)) { setUserLocation([lat, lng]); if (mapRef.current) mapRef.current.flyTo([lat, lng], 15) }
+    } else {
+      var lat = parseFloat(s.lat), lng = parseFloat(s.lon)
+      if (!isNaN(lat) && !isNaN(lng)) { setUserLocation([lat, lng]); loadStations(); if (mapRef.current) mapRef.current.flyTo([lat, lng], 12) }
+    }
+  }
   function handleLocationKeyDown(e) { if (e.key === 'Enter') searchLocation() }
 
   var filteredStations = useMemo(function () {
@@ -182,20 +198,18 @@ export default function MapView({ routePlan }) {
       var passesStatus = true
       if (statusFilter === 'available') passesStatus = station.slots && station.slots.some(function (s) { return s.status === 'AVAILABLE' })
       else if (statusFilter === 'occupied') passesStatus = station.slots && station.slots.some(function (s) { return s.status === 'OCCUPIED' })
-      var passesAmenity = true
-      if (amenityFilter.length > 0) { var stationAmenities = (station.amenities || []).map(function (a) { return a.toLowerCase() }); passesAmenity = amenityFilter.every(function (a) { return stationAmenities.indexOf(a.toLowerCase()) !== -1 }) }
       var passesSlotType = true
       if (slotTypeFilter.length > 0 && station.slots) { passesSlotType = station.slots.some(function (s) { return slotTypeFilter.indexOf(s.slot_type) !== -1 }) }
-      return passesStatus && passesAmenity && passesSlotType
+      return passesStatus && passesSlotType
     })
-  }, [stations, statusFilter, amenityFilter, slotTypeFilter])
+  }, [stations, statusFilter, slotTypeFilter])
 
   var routeCoordsForPolyline = (function () {
     if (!routePlan) return null; var wg = routePlan.waypointGeometry || (routePlan.backendPlan && routePlan.backendPlan.waypoint_geometry)
     return wg && wg.length > 1 ? wg : (routePlan.route && routePlan.route.length > 1 ? routePlan.route : null)
   })()
 
-  var filterCount = (statusFilter !== 'all' ? 1 : 0) + amenityFilter.length + slotTypeFilter.length
+  var filterCount = (statusFilter !== 'all' ? 1 : 0) + slotTypeFilter.length
 
   return (
     <div className="h-full w-full relative">
@@ -219,14 +233,17 @@ export default function MapView({ routePlan }) {
             <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10 max-h-40 overflow-y-auto">
               {searchSuggestions.map(function (s, i) {
                 return <button key={i} onClick={function () { selectSearchSuggestion(s) }}
-                  className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 border-b border-gray-700/50 last:border-0 truncate">{s.display_name}</button>
+                  className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 border-b border-gray-700/50 last:border-0 flex items-center gap-2 truncate">
+                  <span className={'shrink-0 text-[10px] font-medium px-1 py-0.5 rounded ' + (s._type === 'station' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-blue-900/30 text-blue-400')}>{s._type === 'station' ? 'Station' : 'Location'}</span>
+                  <span className="truncate">{s.display_name}</span>
+                </button>
               })}
             </div>
           )}
         </div>
         <div className="flex items-center gap-1.5 pointer-events-auto">
-          <button onClick={findMyLocation} className="bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-xl p-2.5 shadow-lg hover:bg-gray-800 transition-colors" title="My location">
-            <FiCrosshair className="w-4 h-4 text-emerald-400" />
+          <button onClick={findMyLocation} className={'bg-gray-900/90 backdrop-blur-md border rounded-xl p-2.5 shadow-lg hover:bg-gray-800 transition-all ' + (isLocating ? 'border-emerald-400 ring-2 ring-emerald-400/50' : 'border-gray-700')} title={isLocating ? 'Locating...' : 'My location'}>
+            <FiCrosshair className={'w-4 h-4 transition-colors ' + (isLocating ? 'text-emerald-300' : 'text-emerald-400') + (isLocating ? ' animate-pulse' : '')} />
           </button>
           <div ref={filterRef} className="relative">
             <button onClick={function () { setShowFilterPanel(!showFilterPanel); setShowUserMenu(false) }}
@@ -246,17 +263,6 @@ export default function MapView({ routePlan }) {
                   })}
                 </div>
                 <div className="px-3 py-2 border-t border-gray-800">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">Amenities</span>
-                    {amenityFilter.length > 0 && <button onClick={function () { setAmenityFilter([]) }} className="text-[10px] text-gray-500 hover:text-gray-300">Clear</button>}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {['WiFi', 'Restroom', 'Cafe', 'Parking', 'Security', 'Shop'].map(function (a) {
-                      var active = amenityFilter.indexOf(a) !== -1
-                      return <button key={a} onClick={function () { setAmenityFilter(active ? amenityFilter.filter(function (x) { return x !== a }) : amenityFilter.concat([a])) }}
-                        className={'px-2 py-1 text-[10px] font-medium rounded-lg transition-all ' + (active ? 'bg-emerald-600 text-white' : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700')}>{a}</button>
-                    })}
-                  </div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">Charger Type</span>
                     {slotTypeFilter.length > 0 && <button onClick={function () { setSlotTypeFilter([]) }} className="text-[10px] text-gray-500 hover:text-gray-300">Clear</button>}
@@ -298,7 +304,7 @@ export default function MapView({ routePlan }) {
         </div>
       </div>
 
-      <MapContainer center={userLocation} zoom={5} minZoom={5} maxBounds={[[-90, -180], [90, 180]]} maxBoundsViscosity={1.0} worldCopyJump={false} className="h-full w-full" ref={mapRef}>
+      <MapContainer center={userLocation} zoom={5} minZoom={5} maxBounds={[[-90, -180], [90, 180]]} maxBoundsViscosity={1.0} worldCopyJump={false} preferCanvas={true} className="h-full w-full" ref={mapRef}>
         <LayersControl position="bottomright">
           <LayersControl.BaseLayer checked name="Roadmap">
             <TileLayer attribution='&copy; <a href="https://openstreetmap.org/copyright">OSM</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -341,7 +347,7 @@ export default function MapView({ routePlan }) {
             </div></Popup>
           </Marker>
         })}
-        <MarkerClusterGroup chunkedLoading maxClusterRadius={60} spiderfyOnMaxZoom={true} showCoverageOnHover={false} disableClusteringAtZoom={14}>
+        <MarkerClusterGroup chunkedLoading maxClusterRadius={90} showCoverageOnHover={false} disableClusteringAtZoom={14}>
           {filteredStations.map(function (station) {
             var lat = station.latitude, lng = station.longitude; if (!lat || !lng) return null
             var rawStatus = (station.status || '').toUpperCase()
@@ -365,16 +371,8 @@ export default function MapView({ routePlan }) {
                 </div>
                 <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mb-2.5">
                   <span className="flex items-center gap-1"><FiZap className="w-3 h-3" />{station.slots ? station.slots.filter(function (s) { return s.status === 'AVAILABLE' || s.status === 'AVAILABLE' }).length : 0} free</span>
-                  {(station.amenities || []).slice(0, 3).map(function (a, ai) {
-                    var amenityIcon = a.toLowerCase().indexOf('wifi') !== -1 ? FiWifi : a.toLowerCase().indexOf('cafe') !== -1 || a.toLowerCase().indexOf('coffee') !== -1 ? FiCoffee : a.toLowerCase().indexOf('security') !== -1 ? FiShield : FiInfo
-                    return <span key={ai} className="flex items-center gap-0.5"><amenityIcon className="w-3 h-3" />{a}</span>
-                  })}
                 </div>
-                <div className="flex gap-1.5">
-                  <button onClick={function () { navigate('/stations/' + station.id + '?book=true') }} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiBookOpen className="w-3 h-3" /> Book Now</button>
-                  <button onClick={function () { navigate('/stations/' + station.id) }} className="flex-1 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiExternalLink className="w-3 h-3" /> Details</button>
-                  <button onClick={function () { window.open('https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng, '_blank') }} className="flex-1 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiNavigation className="w-3 h-3" /> Go</button>
-                </div>
+                <button onClick={function () { navigate('/stations/' + station.id + '?book=true') }} className="w-full py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiBookOpen className="w-3 h-3" /> Book Now</button>
               </div></Popup>
             </Marker>
           })}

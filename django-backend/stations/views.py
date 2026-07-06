@@ -42,6 +42,7 @@ class StationListView(APIView):
         min_lng = request.query_params.get('min_lng')
         max_lng = request.query_params.get('max_lng')
         bounds = request.query_params.get('bounds')
+        q = request.query_params.get('q')
 
         stations = ChargingStation.objects.all().select_related('owner').prefetch_related('slots').order_by('-created_at')
 
@@ -80,6 +81,9 @@ class StationListView(APIView):
                     location__within=Polygon.from_bbox((west, south, east, north))
                 )
 
+        if q:
+            stations = stations.filter(Q(name__icontains=q) | Q(address__icontains=q))
+
         if page:
             paginator = StationPagination()
             page_obj = paginator.paginate_queryset(stations, request)
@@ -87,7 +91,7 @@ class StationListView(APIView):
             return paginator.get_paginated_response(serializer.data)
 
         # Limit unfiltered results to avoid serializing thousands of stations
-        if not any([lat, lng, slot_type, station_status, amenities_param, min_lat, bounds]):
+        if not any([lat, lng, slot_type, station_status, amenities_param, min_lat, bounds, q]):
             stations = stations[:200]
 
         serializer = ChargingStationSerializer(stations, many=True)
