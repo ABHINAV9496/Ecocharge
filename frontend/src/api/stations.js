@@ -13,6 +13,11 @@ export function getStations(params) {
   return apiClient.get('/api/stations/', { params: params })
 }
 
+// Search stations by name or address
+export function searchStations(query) {
+  return apiClient.get('/api/stations/', { params: { q: query, page_size: 5 } })
+}
+
 // Get platform-wide station stats (SUPER_ADMIN only)
 export function getStationStats() {
   return apiClient.get('/api/stations/stats/')
