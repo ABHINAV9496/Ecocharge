@@ -10,6 +10,7 @@ from drf_spectacular.utils import extend_schema
 from django.db.models import Count, Q, Sum
 from .models import ChargingStation, ChargingSlot, UserFavoriteStation, StationReview
 from bookings.models import Booking
+from users.models import CustomUser
 from .serializers import (
     ChargingStationSerializer,
     CreateStationSerializer,
@@ -348,6 +349,8 @@ class StationStatsView(APIView):
             'total_bookings': total_bookings,
             'revenue': float(revenue),
             'active_drivers': active_drivers,
+            'total_users': CustomUser.objects.count(),
+            'total_drivers': CustomUser.objects.filter(role='DRIVER').count(),
         })
 
 
