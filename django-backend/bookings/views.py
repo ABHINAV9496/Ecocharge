@@ -2,8 +2,9 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.pagination import PageNumberPagination
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from .models import Booking
@@ -36,6 +37,12 @@ def calc_booking_cost(slot, start_time, end_time):
     return round(estimated_kwh * float(slot.rate_per_kwh), 2)
 
 
+class BookingPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
 @extend_schema(tags=['Bookings'])
 class BookingListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -51,6 +58,21 @@ class BookingListView(APIView):
             bookings = Booking.objects.filter(
                 driver=request.user
             ).order_by('-created_at')
+
+        q = request.query_params.get('q')
+        if q:
+            bookings = bookings.filter(
+                Q(id__icontains=q) |
+                Q(driver__username__icontains=q) |
+                Q(slot__station__name__icontains=q)
+            )
+
+        page = request.query_params.get('page')
+        if page:
+            paginator = BookingPagination()
+            page_obj = paginator.paginate_queryset(bookings, request)
+            serializer = BookingSerializer(page_obj, many=True)
+            return paginator.get_paginated_response(serializer.data)
 
         serializer = BookingSerializer(bookings, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -92,26 +114,24 @@ class CreateBookingView(APIView):
                     slot=slot,
                     start_time=start_time,
                     end_time=end_time,
-                    status='CONFIRMED',
+                    status='PENDING',
                     amount_charged=amount,
                 )
-
-                slot.status = 'OCCUPIED'
-                slot.save()
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        send_booking_confirmation.delay(booking.id)
 
         create_notification(
             user=request.user,
             notification_type='BOOKING',
-            title='Booking Confirmed',
-            message=f'Your booking at {booking.slot.station.name} is confirmed for ₹{booking.amount_charged}',
+            title='Booking Created',
+            message=f'Booking at {booking.slot.station.name} created. Complete payment to confirm.',
             link=f'/bookings',
         )
 
-        return Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
+        return Response(
+            {'id': booking.id, 'status': 'PENDING', 'amount_charged': float(booking.amount_charged)},
+            status=status.HTTP_201_CREATED,
+        )
 
 
 @extend_schema(tags=['Bookings'])
@@ -175,6 +195,22 @@ class BookingDetailView(APIView):
                 {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+        try:
+            from payments.models import Payment
+            payment = Payment.objects.get(booking=booking, status='AUTHORIZED')
+            import razorpay
+            from django.conf import settings
+            client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+            client.payment.refund(payment.razorpay_payment_id, {})
+            payment.status = 'REFUNDED'
+            payment.refunded_at = timezone.now()
+            payment.save(update_fields=['status', 'refunded_at'])
+        except Payment.DoesNotExist:
+            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning('Payment refund failed: %s', e)
 
         create_notification(
             user=request.user,
@@ -246,29 +282,27 @@ class BookingCompleteView(APIView):
             booking.save()
 
         try:
-            from wallet.views import get_wallet_balance
-            from wallet.models import WalletTransaction
-            balance = get_wallet_balance(request.user)
-            amount = float(booking.amount_charged)
-            if balance >= amount:
-                with transaction.atomic():
-                    new_balance = balance - amount
-                    WalletTransaction.objects.create(
-                        user=request.user,
-                        transaction_type='DEDUCTION',
-                        amount=amount,
-                        balance_after=new_balance,
-                        description=f'Charging at {booking.slot.station.name} - Booking #{booking.id}'
-                    )
+            from payments.models import Payment
+            payment = Payment.objects.get(booking=booking, status='AUTHORIZED')
+            import razorpay
+            from django.conf import settings
+            client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+            capture_amount = int(float(payment.amount) * 100)
+            client.payment.capture(payment.razorpay_payment_id, capture_amount, {'currency': 'INR'})
+            payment.status = 'CAPTURED'
+            payment.captured_at = timezone.now()
+            payment.save(update_fields=['status', 'captured_at'])
+        except Payment.DoesNotExist:
+            pass
         except Exception as e:
             import logging
-            logging.getLogger(__name__).warning('Wallet deduction failed: %s', e)
+            logging.getLogger(__name__).warning('Payment capture failed: %s', e)
 
         create_notification(
             user=request.user,
             notification_type='BOOKING',
             title='Charging Completed',
-            message=f'Charging completed at {booking.slot.station.name}. ₹{booking.amount_charged} deducted from wallet.',
+            message=f'Charging completed at {booking.slot.station.name}. ₹{booking.amount_charged} charged.',
             link=f'/bookings',
         )
 

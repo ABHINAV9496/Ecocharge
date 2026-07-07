@@ -15,10 +15,11 @@ from pathlib import Path
 import environ
 
 env = environ.Env()
-environ.Env.read_env()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+environ.Env.read_env(BASE_DIR.parent / '.env')
 
 
 # Quick-start development settings - unsuitable for production
@@ -52,14 +53,15 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',             
     'users',
     'stations',
+    'knowledge',
     'bookings',
-    'wallet',
     'trips',
     'contact',
     'vehicles',
     'events',
     'notifications',
     'weather',
+    'payments',
 ]
 
 MIDDLEWARE = [
@@ -203,7 +205,7 @@ SPECTACULAR_SETTINGS = {
         {'name': 'Stations', 'description': 'Charging station CRUD and radius search'},
         {'name': 'Slots', 'description': 'Charging slot management'},
         {'name': 'Bookings', 'description': 'Booking creation and management'},
-        {'name': 'Wallet', 'description': 'Wallet top-up and transactions'},
+
         {'name': 'Trips', 'description': 'Trip planning and history'},
         {'name': 'Weather', 'description': 'Current weather, forecasts, and route weather'},
         {'name': 'Notifications', 'description': 'Real-time user notifications'},
@@ -254,6 +256,10 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+# Razorpay payment gateway
+RAZORPAY_KEY_ID = env('RAZORPAY_KEY_ID', default='rzp_test_placeholder')
+RAZORPAY_KEY_SECRET = env('RAZORPAY_KEY_SECRET', default='')
 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'

@@ -28,11 +28,11 @@ urlpatterns = [
     path('api/auth/', include('users.urls')),
     path('api/stations/', include('stations.urls')),
     path('api/bookings/', include('bookings.urls')),
-    path('api/wallet/', include('wallet.urls')),
     path('api/trips/', include('trips.urls')),
 
     path('api/contact/', include('contact.urls')),
     path('api/vehicles/', include('vehicles.urls')),
+    path('api/payments/', include('payments.urls')),
 
     # Geocoding proxy
     path('api/geocode/', GeocodeView.as_view(), name='geocode'),
@@ -42,6 +42,9 @@ urlpatterns = [
 
     # Notifications
     path('api/notifications/', include('notifications.urls')),
+
+    # Knowledge / RAG
+    path('api/knowledge/', include('knowledge.urls')),
 
     # Weather
     path('api/weather/', include('weather.urls')),
