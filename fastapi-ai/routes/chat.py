@@ -1,44 +1,49 @@
 import asyncio
+import logging
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from agent.agent import Agent
-from agent.tool_registry import ToolRegistry
 from config import settings
+from core.llm import GroqLLMClient
 from memory import MemoryService
+from orchestrator.orchestrator import Orchestrator
 from prompts.system_prompt import SYSTEM_PROMPT
 from schemas import ChatRequest
-from core.llm import GroqLLMClient
-from services.reasoning_service import ReasoningService
+from skills.general_ev_knowledge_skill import GeneralEVKnowledgeSkill
+from skills.registry import SkillRegistry
+from skills.route_planner_skill import RoutePlannerSkill
+from skills.trip_explainer_skill import TripExplainerSkill
+from skills.weather_adaptation_skill import WeatherAdaptationSkill
 from tools.context import auth_token_var
+from tools.real_booking_tool import RealBookingTool
 from tools.real_station_tool import RealStationTool
-from tools.mock_wallet_tool import MockWalletTool
-from tools.mock_booking_tool import MockBookingTool
 from tools.real_trip_tool import RealTripTool
 from tools.real_weather_tool import RealWeatherTool
-from utils import extract_user_id, get_logger
+from utils import extract_user_id
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix='/api', tags=['Chat'])
 
 llm = GroqLLMClient()
 
-# --- Build registry ---
-registry = ToolRegistry()
-for tool in [
-    RealTripTool(),
-    RealWeatherTool(),
-    RealStationTool(),
-    MockWalletTool(),
-    MockBookingTool(),
+tools: dict[str, any] = {
+    'trip_planner': RealTripTool(),
+    'weather_tool': RealWeatherTool(),
+    'station_tool': RealStationTool(),
+    'booking_tool': RealBookingTool(),
+}
+
+skill_registry = SkillRegistry()
+for skill in [
+    RoutePlannerSkill(),
+    TripExplainerSkill(),
+    WeatherAdaptationSkill(),
+    GeneralEVKnowledgeSkill(),
 ]:
-    registry.register(tool)
+    skill_registry.register(skill)
 
-reasoner = ReasoningService(llm=llm)
-agent = Agent(llm=llm, registry=registry, reasoner=reasoner)
-
-# --- Memory ---
 memory_service: MemoryService | None = None
 
 
@@ -53,43 +58,15 @@ def _get_memory_service() -> MemoryService | None:
     return memory_service
 
 
-async def _inject_memory(
-    user_id: int | None,
-    messages: list[dict],
-) -> None:
-    if user_id is None:
-        return
-    svc = _get_memory_service()
-    if svc is None:
-        return
-    prefs = await svc.load_preferences(user_id)
-    context = svc.build_context(prefs)
-    if context:
-        messages[0]['content'] += '\n\n' + context
+orchestrator = Orchestrator(
+    llm=llm,
+    tools=tools,
+    skills=skill_registry,
+    memory_service=_get_memory_service(),
+)
 
 
-async def _update_memory(
-    user_id: int | None,
-    user_message: str,
-    assistant_reply: str,
-) -> None:
-    if user_id is None or not assistant_reply:
-        return
-    svc = _get_memory_service()
-    if svc is None:
-        return
-    try:
-        await svc.update_from_conversation(
-            user_id, user_message, assistant_reply,
-        )
-    except Exception as e:
-        logger.warning('Memory update failed: %s', e)
-
-
-def _build_messages(
-    body: ChatRequest,
-    user_id: int | None,
-) -> list[dict]:
+def _build_messages(body: ChatRequest) -> list[dict]:
     messages = [{'role': 'system', 'content': SYSTEM_PROMPT}]
     for msg in body.history:
         messages.append(msg)
@@ -108,15 +85,13 @@ async def chat(body: ChatRequest):
             detail='AI service is not configured. Please set the GROQ_API_KEY environment variable.',
         )
 
-    # Store auth token for tool execution
     auth_token_var.set(body.token)
 
     user_id = extract_user_id(body.token)
-    messages = _build_messages(body, user_id)
-    await _inject_memory(user_id, messages)
+    messages = _build_messages(body)
 
     logger.info(
-        'Incoming prompt: %s | history=%d messages | user_id=%s',
+        'Incoming: %s | history=%d | user_id=%s',
         body.message[:120],
         len(body.history),
         user_id,
@@ -125,24 +100,18 @@ async def chat(body: ChatRequest):
     async def stream():
         full_reply = ''
         try:
-            async for token in agent.chat_stream(messages):
+            async for token in orchestrator.chat_stream(messages, user_id):
                 full_reply += token
                 yield f'data: {token}\n\n'
             yield 'data: [DONE]\n\n'
             logger.info(
-                'Response complete | input=%d chars | output=%d chars | model=%s',
+                'Response complete | in=%d chars | out=%d chars',
                 len(body.message),
                 len(full_reply),
-                settings.GROQ_MODEL,
-            )
-            # Fire-and-forget memory update
-            asyncio.create_task(
-                _update_memory(user_id, body.message, full_reply),
             )
         except Exception as e:
-            logger.error('Agent streaming error: %s', str(e))
-            error_msg = 'Sorry, I encountered an error processing your request. Please try again.'
-            yield f'data: {error_msg}\n\n'
+            logger.error('Streaming error: %s', str(e))
+            yield 'data: Sorry, I encountered an error. Please try again.\n\n'
             yield 'data: [DONE]\n\n'
 
     return StreamingResponse(
@@ -164,26 +133,21 @@ async def chat_simple(body: ChatRequest):
     if not settings.GROQ_API_KEY:
         raise HTTPException(
             status_code=503,
-            detail='AI service is not configured. Please set the GROQ_API_KEY environment variable.',
+            detail='AI service is not configured.',
         )
 
     auth_token_var.set(body.token)
 
     user_id = extract_user_id(body.token)
-    messages = _build_messages(body, user_id)
-    await _inject_memory(user_id, messages)
+    messages = _build_messages(body)
 
     try:
         reply = ''
-        async for token in agent.chat_stream(messages):
+        async for token in orchestrator.chat_stream(messages, user_id):
             reply += token
-        # Fire-and-forget memory update
-        asyncio.create_task(
-            _update_memory(user_id, body.message, reply),
-        )
         return {'reply': reply}
     except Exception as e:
-        logger.error('Agent generation error: %s', str(e))
+        logger.error('Generation error: %s', str(e))
         raise HTTPException(
             status_code=502,
             detail='AI service error. Please try again later.',
