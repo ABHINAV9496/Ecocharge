@@ -8,8 +8,9 @@
 import apiClient from './client'
 
 // Get all bookings (drivers see their own, owners see their station's)
-export function getBookings() {
-  return apiClient.get('/api/bookings/')
+// params: { page, page_size, q, status }
+export function getBookings(params) {
+  return apiClient.get('/api/bookings/', { params: params })
 }
 
 // Get details of a single booking
