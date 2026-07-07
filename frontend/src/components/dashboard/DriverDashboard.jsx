@@ -8,7 +8,7 @@ import { getNotifications } from '../../api/notifications'
 import { formatCurrency, getSlotTypeColor } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
 import { SkeletonStats } from '../layout/Skeleton'
-import WalletCard from '../wallet/WalletCard'
+import PaymentHistoryCard from '../payments/PaymentHistoryCard'
 import CurrentWeatherWidget from '../weather/CurrentWeatherWidget'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 
@@ -378,9 +378,9 @@ export default function DriverDashboard() {
             )}
           </div>
 
-          {/* RIGHT COLUMN: Wallet + Weather */}
+          {/* RIGHT COLUMN: Payments + Weather */}
           <div className="space-y-6">
-            <WalletCard />
+            <PaymentHistoryCard />
             <CurrentWeatherWidget />
           </div>
         </div>
