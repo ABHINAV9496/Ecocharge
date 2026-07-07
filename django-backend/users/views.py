@@ -280,3 +280,47 @@ class PasswordResetConfirmView(APIView):
         user.save()
 
         return Response({'message': 'Password has been reset successfully. You can now login.'})
+
+@extend_schema(tags=['Admin'])
+class UserAdminView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role != 'SUPER_ADMIN':
+            return Response({'error': 'Only SUPER_ADMIN can manage users'}, status=403)
+
+        users = CustomUser.objects.all().order_by('-date_joined')
+        serializer = UserProfileSerializer(users, many=True)
+        return Response(serializer.data, status=200)
+
+    def patch(self, request, user_id):
+        if request.user.role != 'SUPER_ADMIN':
+            return Response({'error': 'Only SUPER_ADMIN can manage users'}, status=403)
+
+        try:
+            user = CustomUser.objects.get(pk=user_id)
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'User not found'}, status=404)
+
+        role = request.data.get('role')
+        if role and role in dict(CustomUser.Role.choices):
+            user.role = role
+            user.save(update_fields=['role'])
+            return Response(UserProfileSerializer(user).data, status=200)
+
+        return Response({'error': 'Invalid role'}, status=400)
+
+    def delete(self, request, user_id):
+        if request.user.role != 'SUPER_ADMIN':
+            return Response({'error': 'Only SUPER_ADMIN can manage users'}, status=403)
+
+        try:
+            user = CustomUser.objects.get(pk=user_id)
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'User not found'}, status=404)
+
+        if user == request.user:
+            return Response({'error': 'Cannot delete yourself'}, status=400)
+
+        user.delete()
+        return Response({'message': 'User deleted'}, status=200)
