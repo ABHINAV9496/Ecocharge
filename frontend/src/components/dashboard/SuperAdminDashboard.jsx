@@ -13,12 +13,36 @@
 */
 
 import { useState, useEffect } from 'react'
-import { FiUsers, FiMapPin, FiCalendar, FiDollarSign, FiTrendingUp, FiRefreshCw } from 'react-icons/fi'
+import { FiUsers, FiMapPin, FiCalendar, FiDollarSign, FiTrendingUp, FiRefreshCw, FiChevronLeft, FiChevronRight, FiSearch } from 'react-icons/fi'
 import { getStations, getStationStats } from '../../api/stations'
 import { getBookings } from '../../api/bookings'
 import { formatCurrency, formatDate } from '../../utils/formatters'
 import { SkeletonStats, SkeletonTable } from '../layout/Skeleton'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+
+function Pagination({ page, totalPages, onPageChange }) {
+  if (totalPages <= 1) return null
+  function getPages() {
+    var pages = []
+    var addPage = function (p) { if (pages.indexOf(p) === -1) pages.push(p) }
+    addPage(1)
+    if (page > 3) addPage('...')
+    for (var i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) { addPage(i) }
+    if (page < totalPages - 2) addPage('...')
+    addPage(totalPages)
+    return pages
+  }
+  return (
+    <div className="flex items-center justify-center gap-1 pt-3">
+      <button onClick={function () { onPageChange(Math.max(1, page - 1)) }} disabled={page <= 1} className="p-1.5 text-gray-500 hover:text-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed"><FiChevronLeft className="w-3.5 h-3.5" /></button>
+      {getPages().map(function (p, i) {
+        if (p === '...') return <span key={'dots-' + i} className="w-7 h-7 text-xs text-gray-400 flex items-center justify-center">...</span>
+        return <button key={p} onClick={function () { onPageChange(p) }} className={'w-7 h-7 text-xs font-medium rounded-lg ' + (p === page ? 'bg-emerald-500 text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700')}>{p}</button>
+      })}
+      <button onClick={function () { onPageChange(Math.min(totalPages, page + 1)) }} disabled={page >= totalPages} className="p-1.5 text-gray-500 hover:text-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed"><FiChevronRight className="w-3.5 h-3.5" /></button>
+    </div>
+  )
+}
 
 // ----------------------------------------------------------------
 // MAIN COMPONENT: Super Admin Dashboard
@@ -26,24 +50,33 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContai
 export default function SuperAdminDashboard() {
   // ---- STATE ----
   var [stations, setStations] = useState([])
-  var [bookings, setBookings] = useState([])
+  var [allBookings, setAllBookings] = useState([])
+  var [recentBookings, setRecentBookings] = useState([])
   var [stats, setStats] = useState(null)
   var [loading, setLoading] = useState(true)
   var [error, setError] = useState('')
   var [bookingError, setBookingError] = useState('')
 
+  // Station list state
+  var [stationPage, setStationPage] = useState(1)
+  var [stationTotalPages, setStationTotalPages] = useState(1)
+  var [stationSearch, setStationSearch] = useState('')
+
+  // Booking list state
+  var [bookingPage, setBookingPage] = useState(1)
+  var [bookingTotalPages, setBookingTotalPages] = useState(1)
+  var [bookingSearch, setBookingSearch] = useState('')
+
   // ---- FETCH DATA ON MOUNT ----
   useEffect(function () {
     async function loadData() {
       try {
-        var [statsRes, stationsRes, bookingsRes] = await Promise.all([
+        var [statsRes, bookingsRes] = await Promise.all([
           getStationStats(),
-          getStations({ page_size: 200 }),
           getBookings(),
         ])
         setStats(statsRes.data)
-        setStations(stationsRes.data.results || stationsRes.data)
-        setBookings(bookingsRes.data)
+        setAllBookings(bookingsRes.data)
       } catch (error) {
         console.error('Failed to load dashboard data:', error)
         setError('Could not load dashboard data.')
@@ -53,6 +86,31 @@ export default function SuperAdminDashboard() {
 
     loadData()
   }, [])
+
+  function loadStations(p, q) {
+    var params = { page: p, page_size: 10 }
+    if (q) params.q = q
+    getStations(params).then(function (res) {
+      setStations(res.data.results || [])
+      setStationTotalPages(Math.ceil((res.data.count || 0) / 10) || 1)
+    }).catch(function () { })
+  }
+
+  function loadRecentBookings(p, q) {
+    var params = { page: p, page_size: 10 }
+    if (q) params.q = q
+    getBookings(params).then(function (res) {
+      var data = res.data.results || res.data
+      setRecentBookings(Array.isArray(data) ? data : [])
+      if (res.data.count !== undefined) setBookingTotalPages(Math.ceil((res.data.count || 0) / 10) || 1)
+    }).catch(function () { })
+  }
+
+  useEffect(function () { loadStations(stationPage, stationSearch) }, [stationPage])
+  useEffect(function () { loadRecentBookings(bookingPage, bookingSearch) }, [bookingPage])
+
+  function handleStationSearch(v) { setStationSearch(v); setStationPage(1); loadStations(1, v) }
+  function handleBookingSearch(v) { setBookingSearch(v); setBookingPage(1); loadRecentBookings(1, v) }
   // ---- COMPUTED STATS ----
   var displayStats = stats ? [
     { label: 'Stations', value: stats.total_stations, icon: FiMapPin, color: 'text-emerald-500' },
@@ -65,9 +123,9 @@ export default function SuperAdminDashboard() {
     { label: 'Stations', value: stations.length, icon: FiMapPin, color: 'text-emerald-500' },
     { label: 'Total Slots', value: stations.reduce(function (s, st) { return s + (st.slots ? st.slots.length : 0) }, 0), icon: FiTrendingUp, color: 'text-blue-500' },
     { label: 'Available', value: stations.reduce(function (s, st) { return s + (st.slots ? st.slots.filter(function (x) { return x.status === 'AVAILABLE' }).length : 0) }, 0), icon: FiTrendingUp, color: 'text-green-500' },
-    { label: 'Bookings', value: bookings.length, icon: FiCalendar, color: 'text-purple-500' },
-    { label: 'Active Drivers', value: new Set(bookings.map(function (b) { return b.driver_username })).size, icon: FiUsers, color: 'text-orange-500' },
-    { label: 'Revenue', value: formatCurrency(bookings.reduce(function (s, b) { return s + parseFloat(b.amount_charged || 0) }, 0)), icon: FiDollarSign, color: 'text-pink-500' },
+    { label: 'Bookings', value: allBookings.length, icon: FiCalendar, color: 'text-purple-500' },
+    { label: 'Active Drivers', value: new Set(allBookings.map(function (b) { return b.driver_username })).size, icon: FiUsers, color: 'text-orange-500' },
+    { label: 'Revenue', value: formatCurrency(allBookings.reduce(function (s, b) { return s + parseFloat(b.amount_charged || 0) }, 0)), icon: FiDollarSign, color: 'text-pink-500' },
   ]
 
   // ---- LOADING STATE ----
@@ -129,14 +187,14 @@ export default function SuperAdminDashboard() {
       {/* ---- CHARTS SECTION ---- */}
       {(function () {
         var revenueByDate = {}
-        bookings.forEach(function (b) {
+        allBookings.forEach(function (b) {
           var date = formatDate(b.created_at).split(',')[0]
           revenueByDate[date] = (revenueByDate[date] || 0) + parseFloat(b.amount_charged || 0)
         })
         var revenueData = Object.entries(revenueByDate).map(function (e) { return { date: e[0], revenue: e[1] } })
 
         var statusCount = { PENDING: 0, CONFIRMED: 0, COMPLETED: 0, CANCELLED: 0 }
-        bookings.forEach(function (b) { statusCount[b.status] = (statusCount[b.status] || 0) + 1 })
+        allBookings.forEach(function (b) { statusCount[b.status] = (statusCount[b.status] || 0) + 1 })
         var pieData = Object.entries(statusCount).filter(function (e) { return e[1] > 0 }).map(function (e) { return { name: e[0], value: e[1] } })
         var PIE_COLORS = { PENDING: '#f59e0b', CONFIRMED: '#3b82f6', COMPLETED: '#10b981', CANCELLED: '#ef4444' }
 
@@ -202,9 +260,17 @@ export default function SuperAdminDashboard() {
             All Stations
           </h2>
 
-          <div className="space-y-2 max-h-80 overflow-y-auto">
+          <div className="mb-3">
+            <div className="relative">
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input type="text" placeholder="Search stations..." value={stationSearch} onChange={function (e) { handleStationSearch(e.target.value) }}
+                className="w-full pl-9 pr-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+          </div>
+
+          <div className="space-y-2 max-h-72 overflow-y-auto">
             {stations.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">No stations registered</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">No stations found</p>
             ) : (
               stations.map(function (station) {
                 var availSlots = station.slots
@@ -231,6 +297,7 @@ export default function SuperAdminDashboard() {
               })
             )}
           </div>
+          <Pagination page={stationPage} totalPages={stationTotalPages} onPageChange={setStationPage} />
         </div>
 
         {/* ---- COLUMN 2: Recent Bookings ---- */}
@@ -240,11 +307,19 @@ export default function SuperAdminDashboard() {
             Recent Bookings
           </h2>
 
-          <div className="space-y-2 max-h-80 overflow-y-auto">
-            {bookings.length === 0 ? (
+          <div className="mb-3">
+            <div className="relative">
+              <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input type="text" placeholder="Search by ID, driver, or station..." value={bookingSearch} onChange={function (e) { handleBookingSearch(e.target.value) }}
+                className="w-full pl-9 pr-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" />
+            </div>
+          </div>
+
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {recentBookings.length === 0 ? (
               <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">No bookings yet</p>
             ) : (
-              bookings.slice(0, 20).map(function (booking) {
+              recentBookings.map(function (booking) {
                 return (
                   <div key={booking.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-xl">
                     <div>
@@ -261,6 +336,7 @@ export default function SuperAdminDashboard() {
               })
             )}
           </div>
+          <Pagination page={bookingPage} totalPages={bookingTotalPages} onPageChange={setBookingPage} />
         </div>
       </div>
     </div>
