@@ -70,7 +70,7 @@ export function AIProvider(props) {
         buffer = lines.pop()
 
         for (var i = 0; i < lines.length; i++) {
-          var line = lines[i].trim()
+          var line = lines[i].replace('\r', '')
           if (line.startsWith('data: ')) {
             var data = line.slice(6)
             if (data === '[DONE]') continue
