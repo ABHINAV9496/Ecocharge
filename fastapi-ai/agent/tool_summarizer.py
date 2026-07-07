@@ -91,15 +91,6 @@ def _summarize_station(result: dict) -> dict:
     }
 
 
-def _summarize_wallet(result: dict) -> dict:
-    tx_count = len(result.get('recent_transactions', []))
-    return {
-        'balance': result.get('balance_inr'),
-        'currency': result.get('currency'),
-        'recent_transaction_count': tx_count,
-    }
-
-
 def _summarize_booking(result: dict) -> dict:
     bookings = result.get('bookings', [])
     return {
@@ -115,6 +106,5 @@ _SUMMARIZERS = {
     'trip_planner': _summarize_trip,
     'weather_tool': _summarize_weather,
     'station_tool': _summarize_station,
-    'mock_wallet_tool': _summarize_wallet,
-    'mock_booking_tool': _summarize_booking,
+    'booking_tool': _summarize_booking,
 }

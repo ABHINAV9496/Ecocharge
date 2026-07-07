@@ -20,5 +20,8 @@ class Settings:
     REDIS_URL: str = os.getenv('REDIS_URL', 'redis://redis:6379/0')
     DJANGO_BASE: str = os.getenv('DJANGO_BASE', 'http://django:8000')
 
+    EMBEDDING_MODEL: str = os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2')
+    RAG_TOP_K: int = int(os.getenv('RAG_TOP_K', '5'))
+
 
 settings = Settings()
