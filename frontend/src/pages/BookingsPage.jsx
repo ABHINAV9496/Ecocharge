@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { FiCalendar, FiX, FiBatteryCharging } from 'react-icons/fi'
+import { FiCalendar, FiX, FiBatteryCharging, FiCheckCircle, FiClock, FiRefreshCw } from 'react-icons/fi'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { getBookings, cancelBooking } from '../api/bookings'
+import { getPaymentHistory } from '../api/payments'
 import { formatCurrency, formatDate } from '../utils/formatters'
 import Navbar from '../components/layout/Navbar'
 import Sidebar from '../components/layout/Sidebar'
@@ -12,6 +13,7 @@ export default function BookingsPage() {
   var { user } = useAuth()
   var showToast = useToast()
   var [bookings, setBookings] = useState([])
+  var [paymentMap, setPaymentMap] = useState({})
   var [loading, setLoading] = useState(true)
   var [error, setError] = useState('')
   var [cancelling, setCancelling] = useState(null)
@@ -27,7 +29,17 @@ export default function BookingsPage() {
         setLoading(false)
       }
     }
+    async function loadPayments() {
+      try {
+        var res = await getPaymentHistory()
+        var payments = res.data.payments || []
+        var map = {}
+        payments.forEach(function (p) { map[p.booking] = p })
+        setPaymentMap(map)
+      } catch (e) { /* ignore */ }
+    }
     load()
+    loadPayments()
   }, [])
 
   async function handleCancel(bookingId) {
@@ -83,6 +95,13 @@ export default function BookingsPage() {
                     ? booking.slot_details.station_name
                     : 'Slot #' + booking.slot
                   var isActive = booking.status === 'CONFIRMED'
+                  var payment = paymentMap[booking.id]
+                  var payStatus = payment ? payment.status : null
+                  var payBadge = null
+                  if (payStatus === 'CAPTURED') payBadge = { icon: FiCheckCircle, text: 'Paid', cls: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' }
+                  else if (payStatus === 'AUTHORIZED') payBadge = { icon: FiClock, text: 'Authorized', cls: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' }
+                  else if (payStatus === 'REFUNDED') payBadge = { icon: FiRefreshCw, text: 'Refunded', cls: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800' }
+                  else if (payStatus === 'FAILED') payBadge = { icon: FiX, text: 'Failed', cls: 'text-red-500 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' }
 
                   return (
                     <div key={booking.id}
@@ -104,6 +123,14 @@ export default function BookingsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
+                        {payBadge && (function () {
+                          var PayIcon = payBadge.icon
+                          return (
+                            <span className={'hidden sm:inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-full border ' + payBadge.cls}>
+                              <PayIcon className="w-3 h-3" /> {payBadge.text}
+                            </span>
+                          )
+                        })()}
                         <span className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(booking.amount_charged)}</span>
                         {isActive && (
                           <button onClick={function () { handleCancel(booking.id) }}

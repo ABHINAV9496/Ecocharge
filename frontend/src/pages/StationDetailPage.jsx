@@ -3,11 +3,23 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { FiArrowLeft, FiBatteryCharging, FiDollarSign, FiClock, FiHeart, FiStar, FiX } from 'react-icons/fi'
 import { getStation, toggleFavorite, getReviews, createReview } from '../api/stations'
 import { createBooking } from '../api/bookings'
+import { createPaymentOrder, verifyPayment } from '../api/payments'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { getSlotTypeColor, SLOT_TYPE_LABELS } from '../utils/formatters'
 import { SkeletonList } from '../components/layout/Skeleton'
 import Navbar from '../components/layout/Navbar'
+
+function loadRazorpayScript() {
+  return new Promise(function (resolve, reject) {
+    if (window.Razorpay) { resolve(); return }
+    var script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.onload = resolve
+    script.onerror = reject
+    document.body.appendChild(script)
+  })
+}
 
 export default function StationDetailPage() {
   var { id } = useParams()
@@ -77,14 +89,56 @@ export default function StationDetailPage() {
     setBooking(slot.id)
     try {
       var now = new Date()
-      await createBooking({ slot: slot.id, start_time: now.toISOString(), end_time: new Date(now.getTime() + 60 * 60 * 1000).toISOString() })
-      showToast('Booking confirmed at ' + station.name + '!', 'success')
-      var res = await getStation(id)
-      setSlots(res.data.slots || [])
+      var bookingRes = await createBooking({ slot: slot.id, start_time: now.toISOString(), end_time: new Date(now.getTime() + 60 * 60 * 1000).toISOString() })
+      var bookingId = bookingRes.data.id
+      var amount = bookingRes.data.amount_charged
+
+      await loadRazorpayScript()
+
+      var orderRes = await createPaymentOrder(bookingId)
+      var order = orderRes.data
+
+      var options = {
+        key: order.key_id,
+        amount: order.amount,
+        currency: order.currency,
+        name: 'EcoCharge',
+        description: 'Booking at ' + station.name,
+        order_id: order.order_id,
+        handler: async function (response) {
+          try {
+            await verifyPayment({
+              booking_id: bookingId,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            })
+            showToast('Payment successful! Booking confirmed at ' + station.name + '!', 'success')
+            var res = await getStation(id)
+            setSlots(res.data.slots || [])
+          } catch (verifyErr) {
+            showToast('Payment verification failed', 'error')
+          }
+        },
+        modal: {
+          ondismiss: function () {
+            showToast('Payment cancelled', 'info')
+          }
+        },
+        theme: { color: '#10b981' },
+      }
+
+      var rzp = new window.Razorpay(options)
+      rzp.open()
     } catch (err) {
       var msg = 'Booking failed'
-      if (err.response && err.response.data) msg = err.response.data.error || err.response.data.detail || msg
-      else if (err.message) msg = err.message
+      if (err.response && err.response.data) {
+        msg = err.response.data.error || err.response.data.detail || msg
+        console.error('Full API error:', err.response.data)
+      } else if (err.message) {
+        msg = err.message
+      }
+      console.error('Booking error:', err)
       showToast(msg, 'error')
       setBookingError(msg)
     }
