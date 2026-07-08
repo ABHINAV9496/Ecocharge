@@ -71,6 +71,12 @@ class BookingListView(APIView):
         if status_filter and status_filter != 'ALL':
             bookings = bookings.filter(status=status_filter)
 
+        days = request.query_params.get('days')
+        if days:
+            from datetime import timedelta
+            cutoff = timezone.now() - timedelta(days=int(days))
+            bookings = bookings.filter(created_at__gte=cutoff)
+
         page = request.query_params.get('page')
         if page:
             paginator = BookingPagination()

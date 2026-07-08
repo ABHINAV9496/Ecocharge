@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import json
 import logging
-from datetime import timezone
+from datetime import timedelta, timezone
 
 import razorpay
 from django.conf import settings
@@ -290,6 +290,11 @@ class PaymentHistoryView(APIView):
                 Q(user__username__icontains=q) |
                 Q(booking__slot__station__name__icontains=q)
             )
+
+        days = request.query_params.get('days')
+        if days:
+            cutoff = tz.now() - timedelta(days=int(days))
+            payments = payments.filter(created_at__gte=cutoff)
 
         page = request.query_params.get('page')
         if page:
