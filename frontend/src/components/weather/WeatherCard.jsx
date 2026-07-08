@@ -9,24 +9,28 @@ function evAdvisory(weather) {
   if (rain != null && rain > 70) advices.push({ icon: '🌧️', text: 'Heavy rain may reduce range. Drive carefully.', level: 'warning' })
   else if (rain != null && rain > 40) advices.push({ icon: '🌦️', text: 'Light rain expected. Slight efficiency drop possible.', level: 'info' })
   if (wind != null && wind > 40) advices.push({ icon: '💨', text: 'Strong winds may affect efficiency and range.', level: 'warning' })
-  else if (wind != null && wind > 25) advices.push({ icon: '🌬️', text: 'Moderate breeze — minimal range impact.', level: 'info' })
+  else if (wind != null && wind > 25) advices.push({ icon: '🌬️', text: 'Moderate breeze \u2014 minimal range impact.', level: 'info' })
   if (temp != null && temp < 10) advices.push({ icon: '🥶', text: 'Cold weather reduces battery efficiency. Plan extra charging.', level: 'warning' })
   else if (temp != null && temp > 40) advices.push({ icon: '🔥', text: 'High heat may affect battery cooling. Monitor temperature.', level: 'info' })
   if (advices.length === 0) advices.push({ icon: '✅', text: 'Weather is suitable for EV travel.', level: 'good' })
   return advices[0]
 }
 
-export default function WeatherCard({ weather, title, loading }) {
+export default function WeatherCard({ weather, loading }) {
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm animate-pulse">
-        <div className="h-4 w-24 bg-gray-200 dark:bg-gray-700 rounded mb-4" />
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-full" />
-          <div className="space-y-2">
-            <div className="h-6 w-16 bg-gray-200 dark:bg-gray-700 rounded" />
+      <div className="space-y-3 animate-pulse">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-full" />
+          <div className="space-y-1.5">
+            <div className="h-5 w-14 bg-gray-200 dark:bg-gray-700 rounded" />
             <div className="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded" />
           </div>
+        </div>
+        <div className="flex gap-2">
+          {[1, 2, 3].map(function (i) {
+            return <div key={i} className="h-12 flex-1 bg-gray-200 dark:bg-gray-700 rounded-xl" />
+          })}
         </div>
       </div>
     )
@@ -35,14 +39,14 @@ export default function WeatherCard({ weather, title, loading }) {
   if (!weather) return null
 
   var iconMap = {
-    sun: '☀️',
-    'cloud-sun': '⛅',
-    cloud: '☁️',
-    'cloud-rain': '🌧️',
-    'cloud-lightning': '⛈️',
-    'cloud-snow': '🌨️',
-    fog: '🌫️',
-    'cloud-drizzle': '🌦️',
+    sun: '\u2600\uFE0F',
+    'cloud-sun': '\u26C5',
+    cloud: '\u2601\uFE0F',
+    'cloud-rain': '\uD83C\uDF27\uFE0F',
+    'cloud-lightning': '\u26C8\uFE0F',
+    'cloud-snow': '\uD83C\uDF28\uFE0F',
+    fog: '\uD83C\uDF2B\uFE0F',
+    'cloud-drizzle': '\uD83C\uDF26\uFE0F',
   }
 
   var advisory = evAdvisory(weather)
@@ -53,56 +57,61 @@ export default function WeatherCard({ weather, title, loading }) {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-      {title && (
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">{title}</h3>
-      )}
-      <div className="flex items-center gap-3">
-        <span className="text-3xl">{iconMap[weather.icon] || '🌤️'}</span>
+    <div>
+      <div className="flex items-center gap-3 mb-2.5">
+        <span className="text-2xl">{iconMap[weather.icon] || '\uD83C\uDF24\uFE0F'}</span>
         <div className="min-w-0">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-2xl font-bold text-gray-900 dark:text-white">
-              {weather.temperature != null ? Math.round(weather.temperature) + '°' : '--°'}
+          <div className="flex items-baseline gap-1">
+            <span className="text-xl font-bold text-gray-900 dark:text-white">
+              {weather.temperature != null ? Math.round(weather.temperature) + '\u00B0' : '--\u00B0'}
             </span>
-            <span className="text-xs text-gray-500 dark:text-gray-400">C</span>
+            <span className="text-[10px] text-gray-500 dark:text-gray-400">C</span>
+            <span className="text-[11px] text-gray-500 dark:text-gray-400 ml-1 capitalize">{weather.description || 'Unknown'}</span>
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">{weather.description || 'Unknown'}</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+      <div className="flex gap-1.5 mb-2.5">
         {weather.temperature != null && (
-          <div className="flex flex-col items-center p-1.5 bg-gray-50 dark:bg-gray-900 rounded-xl">
-            <FiThermometer className="w-3.5 h-3.5 text-red-400 mb-0.5" />
-            <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300">{Math.round(weather.temperature)}°C</span>
-            <span className="text-[9px] text-gray-400 dark:text-gray-500">Temp</span>
+          <div className="flex-1 flex items-center gap-1.5 p-1.5 bg-gray-50 dark:bg-gray-900/50 rounded-xl">
+            <FiThermometer className="w-3 h-3 text-red-400 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[10px] font-medium text-gray-700 dark:text-gray-300 leading-tight">{Math.round(weather.temperature)}\u00B0C</div>
+              <div className="text-[8px] text-gray-400 dark:text-gray-500 leading-tight">Temp</div>
+            </div>
           </div>
         )}
         {weather.wind_speed != null && (
-          <div className="flex flex-col items-center p-1.5 bg-gray-50 dark:bg-gray-900 rounded-xl">
-            <FiWind className="w-3.5 h-3.5 text-teal-400 mb-0.5" />
-            <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300">{Math.round(weather.wind_speed)}</span>
-            <span className="text-[9px] text-gray-400 dark:text-gray-500">km/h</span>
+          <div className="flex-1 flex items-center gap-1.5 p-1.5 bg-gray-50 dark:bg-gray-900/50 rounded-xl">
+            <FiWind className="w-3 h-3 text-teal-400 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[10px] font-medium text-gray-700 dark:text-gray-300 leading-tight">{Math.round(weather.wind_speed)}</div>
+              <div className="text-[8px] text-gray-400 dark:text-gray-500 leading-tight">km/h</div>
+            </div>
           </div>
         )}
         {weather.precipitation_probability != null && (
-          <div className="flex flex-col items-center p-1.5 bg-gray-50 dark:bg-gray-900 rounded-xl">
-            <FiDroplet className="w-3.5 h-3.5 text-blue-400 mb-0.5" />
-            <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300">{Math.round(weather.precipitation_probability)}%</span>
-            <span className="text-[9px] text-gray-400 dark:text-gray-500">Rain</span>
+          <div className="flex-1 flex items-center gap-1.5 p-1.5 bg-gray-50 dark:bg-gray-900/50 rounded-xl">
+            <FiDroplet className="w-3 h-3 text-blue-400 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[10px] font-medium text-gray-700 dark:text-gray-300 leading-tight">{Math.round(weather.precipitation_probability)}%</div>
+              <div className="text-[8px] text-gray-400 dark:text-gray-500 leading-tight">Rain</div>
+            </div>
           </div>
         )}
         {weather.humidity != null && (
-          <div className="flex flex-col items-center p-1.5 bg-gray-50 dark:bg-gray-900 rounded-xl">
-            <FiDroplet className="w-3.5 h-3.5 text-sky-400 mb-0.5" />
-            <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300">{Math.round(weather.humidity)}%</span>
-            <span className="text-[9px] text-gray-400 dark:text-gray-500">Humidity</span>
+          <div className="flex-1 flex items-center gap-1.5 p-1.5 bg-gray-50 dark:bg-gray-900/50 rounded-xl">
+            <FiDroplet className="w-3 h-3 text-sky-400 shrink-0" />
+            <div className="min-w-0">
+              <div className="text-[10px] font-medium text-gray-700 dark:text-gray-300 leading-tight">{Math.round(weather.humidity)}%</div>
+              <div className="text-[8px] text-gray-400 dark:text-gray-500 leading-tight">Humidity</div>
+            </div>
           </div>
         )}
       </div>
 
       {advisory && (
-        <div className={'mt-3 px-3 py-2 rounded-xl border text-xs leading-relaxed flex items-start gap-2 ' + (advisoryColors[advisory.level] || advisoryColors.info)}>
+        <div className={'px-2.5 py-1.5 rounded-xl border text-[11px] leading-relaxed flex items-start gap-1.5 ' + (advisoryColors[advisory.level] || advisoryColors.info)}>
           <span className="text-sm shrink-0">{advisory.icon}</span>
           <span>{advisory.text}</span>
         </div>

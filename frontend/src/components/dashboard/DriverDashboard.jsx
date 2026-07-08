@@ -41,6 +41,7 @@ export default function DriverDashboard() {
   var [profileError, setProfileError] = useState('')
   var [bookingError, setBookingError] = useState('')
   var [updateError, setUpdateError] = useState('')
+  var [bookingsPage, setBookingsPage] = useState(1)
 
   useEffect(function () {
     if (auth.user) {
@@ -95,6 +96,7 @@ export default function DriverDashboard() {
     try {
       await cancelBooking(bookingId)
       setBookings(bookings.filter(function (b) { return b.id !== bookingId }))
+      setBookingsPage(1)
       showToast('Booking cancelled successfully', 'success')
     } catch (error) {
       console.error('Failed to cancel booking ' + bookingId + ':', error)
@@ -147,6 +149,24 @@ export default function DriverDashboard() {
   var totalDistance = trips.reduce(function (s, t) { return s + (t.distance_km || 0) }, 0)
   var totalChargingCost = trips.reduce(function (s, t) { return s + parseFloat(t.total_cost || 0) }, 0)
   var hasChartData = bookings.length >= 2
+  var PAGE_SIZE = 10
+  var displayBookings = bookings.slice((bookingsPage - 1) * PAGE_SIZE, bookingsPage * PAGE_SIZE)
+  var totalPages = Math.ceil(bookings.length / PAGE_SIZE)
+
+  var pageNumbers = []
+  if (bookings.length > PAGE_SIZE) {
+    if (totalPages <= 5) {
+      for (var i = 1; i <= totalPages; i++) pageNumbers.push({ type: 'page', value: i })
+    } else {
+      pageNumbers.push({ type: 'page', value: 1 })
+      var start = Math.max(2, bookingsPage - 1)
+      var end = Math.min(totalPages - 1, bookingsPage + 1)
+      if (start > 2) pageNumbers.push({ type: 'ellipsis' })
+      for (var j = start; j <= end; j++) pageNumbers.push({ type: 'page', value: j })
+      if (end < totalPages - 1) pageNumbers.push({ type: 'ellipsis' })
+      pageNumbers.push({ type: 'page', value: totalPages })
+    }
+  }
 
   if (loading) {
     return (
@@ -341,11 +361,18 @@ export default function DriverDashboard() {
                   return (
                     <ResponsiveContainer width="100%" height={260}>
                       <BarChart data={chartData} margin={{ top: 4, right: 4, left: -10, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="costGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#10b981" />
+                            <stop offset="100%" stopColor="#34d399" />
+                          </linearGradient>
+                        </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#374151" strokeOpacity={0.3} />
                         <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false}
                           tickFormatter={function (v) { return '\u20B9' + v.toLocaleString('en-IN') }} />
                         <Tooltip
+                          cursor={false}
                           contentStyle={{ background: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: '12px' }}
                           labelStyle={{ color: '#e5e7eb', fontWeight: 600, marginBottom: 4 }}
                           formatter={function (value) {
@@ -356,7 +383,7 @@ export default function DriverDashboard() {
                             return label
                           }}
                         />
-                        <Bar dataKey="cost" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                        <Bar dataKey="cost" fill="url(#costGrad)" radius={[4, 4, 0, 0]} maxBarSize={40} />
                       </BarChart>
                     </ResponsiveContainer>
                   )
@@ -410,7 +437,7 @@ export default function DriverDashboard() {
           </div>
         ) : (
           <div className="space-y-3">
-            {bookings.map(function (booking) {
+            {displayBookings.map(function (booking) {
               var stationName = booking.slot_details
                 ? booking.slot_details.station_name
                 : 'Slot #' + booking.slot
@@ -491,6 +518,39 @@ export default function DriverDashboard() {
                 </div>
               )
             })}
+            {bookings.length > PAGE_SIZE && (
+              <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-700/50 mt-3">
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  Showing {(bookingsPage - 1) * PAGE_SIZE + 1}&ndash;{Math.min(bookingsPage * PAGE_SIZE, bookings.length)} of {bookings.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button onClick={function () { setBookingsPage(bookingsPage - 1) }}
+                    disabled={bookingsPage === 1}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed enabled:hover:bg-gray-100 dark:enabled:hover:bg-gray-700">
+                    &lsaquo;
+                  </button>
+                  {pageNumbers.map(function (p, idx) {
+                    if (p.type === 'ellipsis') {
+                      return <span key={'e' + idx} className="w-7 h-7 flex items-center justify-center text-xs text-gray-400 dark:text-gray-500">...</span>
+                    }
+                    var active = p.value === bookingsPage
+                    return (
+                      <button key={p.value} onClick={function () { setBookingsPage(p.value) }}
+                        className={'w-7 h-7 flex items-center justify-center rounded-lg text-xs font-medium transition-all ' + (active
+                          ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
+                          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700')}>
+                        {p.value}
+                      </button>
+                    )
+                  })}
+                  <button onClick={function () { setBookingsPage(bookingsPage + 1) }}
+                    disabled={bookingsPage === totalPages}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed enabled:hover:bg-gray-100 dark:enabled:hover:bg-gray-700">
+                    &rsaquo;
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

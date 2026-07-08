@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
 import { NotificationProvider } from './context/NotificationContext'
@@ -37,6 +37,7 @@ function PageLoader() {
 
 function App() {
   var { user, loading } = useAuth()
+  var location = useLocation()
 
   if (loading) {
     return <PageLoader />
@@ -103,8 +104,8 @@ function App() {
             <Route path="*" element={<Navigate to="/map" replace />} />
           </Routes>
           </Suspense>
-          <AiChatButton />
-          <AiChatWindow />
+          {(user || location.pathname === '/') && <AiChatButton />}
+          {(user || location.pathname === '/') && <AiChatWindow />}
         </AIProvider>
         </VehicleProvider>
       </NotificationProvider>

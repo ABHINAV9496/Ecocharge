@@ -28,7 +28,6 @@ export default function CurrentWeatherWidget({ defaultCity }) {
   }
 
   useEffect(function () {
-    // Try browser geolocation first
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         function (pos) {
@@ -37,7 +36,6 @@ export default function CurrentWeatherWidget({ defaultCity }) {
           loadWeather(c.lat, c.lng)
         },
         function () {
-          // Geolocation denied or failed — use default or Mumbai
           setCoords(null)
           loadWeather(19.076, 72.8777)
         }
@@ -60,48 +58,50 @@ export default function CurrentWeatherWidget({ defaultCity }) {
     : []
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
-          <FiMapPin className="w-3.5 h-3.5 text-emerald-500" />
-          {coords ? 'Current Location' : (defaultCity || 'Mumbai')}
-        </h3>
-        <button
-          onClick={handleRefresh}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-          title="Refresh weather"
-        >
-          <FiRefreshCw className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      {error && (
-        <div className="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 text-xs rounded-xl mb-3">
-          {error}
+    <div className="bg-white dark:bg-gray-800/80 rounded-2xl border border-gray-100 dark:border-gray-700/30 shadow-sm card-hover">
+      <div className="p-4 md:p-5">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
+            <FiMapPin className="w-3.5 h-3.5 text-emerald-500" />
+            {coords ? 'Current Location' : (defaultCity || 'Mumbai')}
+          </h3>
+          <button
+            onClick={handleRefresh}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            title="Refresh weather"
+          >
+            <FiRefreshCw className="w-3.5 h-3.5" />
+          </button>
         </div>
-      )}
 
-      <WeatherCard weather={weather} loading={loading} />
-
-      {hourlyForecast.length > 0 && !loading && (
-        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Next few hours</p>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {hourlyForecast.map(function (h, i) {
-              var time = new Date(h.time || h.dt * 1000)
-              var hourLabel = time.getHours().toString().padStart(2, '0') + ':00'
-              return (
-                <div key={i} className="shrink-0 flex flex-col items-center p-2 bg-gray-50 dark:bg-gray-900 rounded-xl min-w-[52px]">
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{hourLabel}</span>
-                  <span className="text-sm font-bold text-gray-900 dark:text-white">
-                    {h.temperature != null ? Math.round(h.temperature) + '°' : '--°'}
-                  </span>
-                </div>
-              )
-            })}
+        {error && (
+          <div className="p-2.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-400 text-xs rounded-xl mb-2">
+            {error}
           </div>
-        </div>
-      )}
+        )}
+
+        <WeatherCard weather={weather} loading={loading} />
+
+        {hourlyForecast.length > 0 && !loading && (
+          <div className="mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-700/50">
+            <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1.5">Next few hours</p>
+            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+              {hourlyForecast.map(function (h, i) {
+                var time = new Date(h.time || h.dt * 1000)
+                var hourLabel = time.getHours().toString().padStart(2, '0') + ':00'
+                return (
+                  <div key={i} className="shrink-0 flex flex-col items-center p-1.5 bg-gray-50 dark:bg-gray-900/50 rounded-xl min-w-[44px]">
+                    <span className="text-[9px] text-gray-500 dark:text-gray-400">{hourLabel}</span>
+                    <span className="text-xs font-bold text-gray-900 dark:text-white">
+                      {h.temperature != null ? Math.round(h.temperature) + '\u00B0' : '--\u00B0'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

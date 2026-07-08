@@ -1,16 +1,16 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, LayersControl, Polyline } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 
 import L from 'leaflet'
-import { FiSearch, FiCrosshair, FiBatteryCharging, FiRefreshCw, FiArrowRight, FiX, FiClock, FiDollarSign, FiZap, FiInfo, FiFilter, FiMap, FiExternalLink, FiBookOpen } from 'react-icons/fi'
-import { getStations, searchStations } from '../../api/stations'
-import { searchLocations } from '../../api/geocode'
+import { FiCrosshair, FiBatteryCharging, FiRefreshCw, FiArrowRight, FiX, FiClock, FiDollarSign, FiZap, FiInfo, FiFilter, FiMap, FiExternalLink, FiBookOpen, FiArrowLeft } from 'react-icons/fi'
+import { getStations } from '../../api/stations'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { useVehicle } from '../../context/VehicleContext'
 import { formatDistance, formatDuration } from '../../utils/formatters'
+import MapSearchBar from './MapSearchBar'
 import 'leaflet/dist/leaflet.css'
 
 delete L.Icon.Default.prototype._getIconUrl
@@ -64,24 +64,55 @@ function FitBoundsOnRoute({ routePlan }) {
   return null
 }
 
+var StationMarker = memo(function ({ station }) {
+  var navigate = useNavigate()
+  var lat = station.latitude, lng = station.longitude
+  if (!lat || !lng) return null
+  var rawStatus = (station.status || '').toUpperCase()
+  var mStatus = rawStatus === 'ACTIVE' || rawStatus === 'AVAILABLE' ? 'ACTIVE' : rawStatus === 'MAINTENANCE' ? 'MAINTENANCE' : 'INACTIVE'
+  return (
+    <Marker position={[lat, lng]} icon={createStationIcon(mStatus, false)}>
+      <Popup><div className="min-w-[220px]">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center gap-1.5">
+            <div className={'w-2 h-2 rounded-full shrink-0 ' + (mStatus === 'ACTIVE' ? 'bg-emerald-500' : mStatus === 'MAINTENANCE' ? 'bg-amber-500' : 'bg-gray-400')} />
+            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">{station.name}</h3>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-relaxed">{station.address}</p>
+        <div className="flex flex-wrap gap-1.5 mb-2.5">
+          {station.slots && station.slots.slice(0, 3).map(function (s, si) {
+            var connColors = { DC_ULTRA: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400', DC_FAST: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400', AC_FAST: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400', AC_SLOW: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' }
+            var cls = connColors[s.slot_type] || 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+            return <span key={si} className={'text-[10px] font-medium px-1.5 py-0.5 rounded ' + cls}>{s.slot_type === 'DC_ULTRA' ? 'DC Ultra' : s.slot_type === 'DC_FAST' ? 'DC Fast' : s.slot_type === 'AC_FAST' ? 'AC Fast' : s.slot_type === 'AC_SLOW' ? 'AC Slow' : s.slot_type} {s.power_kw ? '(' + s.power_kw + 'kW)' : ''}</span>
+          })}
+          {station.slots && station.slots.length > 3 && <span className="text-[10px] text-gray-400 dark:text-gray-500">+{station.slots.length - 3} more</span>}
+        </div>
+        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mb-2.5">
+          <span className="flex items-center gap-1"><FiZap className="w-3 h-3" />{station.slots ? station.slots.filter(function (s) { return s.status === 'AVAILABLE' || s.status === 'AVAILABLE' }).length : 0} free</span>
+        </div>
+        <button onClick={function () { navigate('/stations/' + station.id + '?book=true') }} className="w-full py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiBookOpen className="w-3 h-3" /> Book Now</button>
+      </div></Popup>
+    </Marker>
+  )
+}, function (prevProps, nextProps) {
+  return prevProps.station.id === nextProps.station.id && prevProps.station.status === nextProps.station.status
+})
+
 export default function MapView({ routePlan }) {
   var { vehicle } = useVehicle()
   var navigate = useNavigate()
   var [stations, setStations] = useState([])
   var [userLocation, setUserLocation] = useState([20.5937, 78.9629])
-  var [locationQuery, setLocationQuery] = useState('')
   var [isLoading, setIsLoading] = useState(true)
   var [isError, setIsError] = useState(false)
   var [errorMessage, setErrorMessage] = useState('')
   var [statusFilter, setStatusFilter] = useState('all')
-  var [searchSuggestions, setSearchSuggestions] = useState([])
-  var [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
   var [showUserMenu, setShowUserMenu] = useState(false)
   var [isLocating, setIsLocating] = useState(false)
   var [slotTypeFilter, setSlotTypeFilter] = useState([])
   var [showFilterPanel, setShowFilterPanel] = useState(false)
   var [showRoutePopup, setShowRoutePopup] = useState(false)
-  var searchTimer = useRef(null)
   var filterRef = useRef(null)
   var userMenuRef = useRef(null)
   var { user, logoutUser } = useAuth()
@@ -117,7 +148,8 @@ export default function MapView({ routePlan }) {
       var params = {}
       params.bounds = bounds.getSouth() + ',' + bounds.getWest() + ',' + bounds.getNorth() + ',' + bounds.getEast()
       var response = await getStations(params); var data = response.data || []
-      setStations(data)
+      var sameIds = stations.length === data.length && stations.every(function (s, i) { return s.id === (data[i] && data[i].id) })
+      if (!sameIds) setStations(data)
       if (cellKey) stationCache.current[cellKey] = data
     } catch (error) {
       console.error('Failed to load charging stations:', error); setIsError(true)
@@ -162,36 +194,10 @@ export default function MapView({ routePlan }) {
   function handleRetry() { loadStations() }
   function handleViewportChange() { if (debounceTimer.current) clearTimeout(debounceTimer.current); debounceTimer.current = setTimeout(function () { loadStations() }, 800) }
 
-  async function searchLocation() {
-    if (!locationQuery.trim()) return; var data = await searchLocations(locationQuery, 1)
-    if (data && data.length > 0) { var lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon); if (!isNaN(lat) && !isNaN(lng)) { setUserLocation([lat, lng]); loadStations(); if (mapRef.current) mapRef.current.flyTo([lat, lng], 12) } }
+  function handleSearchSelect(lat, lng) {
+    setUserLocation([lat, lng]); loadStations()
+    if (mapRef.current) mapRef.current.flyTo([lat, lng], 12)
   }
-
-  async function suggestSearch(query) {
-    if (!query.trim()) { setSearchSuggestions([]); setShowSearchSuggestions(false); return }
-    var [locData, stationData] = await Promise.all([
-      searchLocations(query, 5),
-      searchStations(query, mapRef.current ? mapRef.current.getBounds().toBBoxString() : null).then(function (r) { return r.data || [] }).catch(function () { return [] }),
-    ])
-    var locResults = (locData || []).map(function (item) { return { _type: 'location', display_name: item.display_name, lat: item.lat, lon: item.lon } })
-    var stationResults = stationData.map(function (s) { return { _type: 'station', display_name: s.name + (s.address ? ' — ' + s.address : ''), lat: s.latitude, lng: s.longitude, station: s } })
-    var merged = locResults.concat(stationResults).slice(0, 8)
-    setSearchSuggestions(merged); setShowSearchSuggestions(merged.length > 0)
-  }
-
-  function handleLocationInput(value) { setLocationQuery(value); if (searchTimer.current) clearTimeout(searchTimer.current); searchTimer.current = setTimeout(function () { suggestSearch(value) }, 400) }
-
-  function selectSearchSuggestion(s) {
-    setLocationQuery(s.display_name); setShowSearchSuggestions(false)
-    if (s._type === 'station') {
-      var lat = parseFloat(s.lat), lng = parseFloat(s.lng)
-      if (!isNaN(lat) && !isNaN(lng)) { setUserLocation([lat, lng]); loadStations(); if (mapRef.current) mapRef.current.flyTo([lat, lng], 15) }
-    } else {
-      var lat = parseFloat(s.lat), lng = parseFloat(s.lon)
-      if (!isNaN(lat) && !isNaN(lng)) { setUserLocation([lat, lng]); loadStations(); if (mapRef.current) mapRef.current.flyTo([lat, lng], 12) }
-    }
-  }
-  function handleLocationKeyDown(e) { if (e.key === 'Enter') searchLocation() }
 
   var filteredStations = useMemo(function () {
     return stations.filter(function (station) {
@@ -221,26 +227,7 @@ export default function MapView({ routePlan }) {
       )}
 
       <div className="absolute top-4 left-4 right-4 z-[1000] flex items-start gap-2 pointer-events-none">
-        <div className="flex-1 max-w-xl mx-auto relative pointer-events-auto">
-          <div className="flex items-center bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-xl px-3 py-2.5 shadow-lg">
-            <FiSearch className="w-4 h-4 text-gray-400 mr-2 shrink-0" />
-            <input type="text" placeholder="Search destination or location..." value={locationQuery}
-              onChange={function (e) { handleLocationInput(e.target.value) }} onKeyDown={handleLocationKeyDown}
-              className="flex-1 bg-transparent outline-none text-sm text-white placeholder-gray-500" />
-            <button onClick={searchLocation} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium rounded-lg transition-colors shrink-0 ml-2">Go</button>
-          </div>
-          {showSearchSuggestions && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10 max-h-40 overflow-y-auto">
-              {searchSuggestions.map(function (s, i) {
-                return <button key={i} onClick={function () { selectSearchSuggestion(s) }}
-                  className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 border-b border-gray-700/50 last:border-0 flex items-center gap-2 truncate">
-                  <span className={'shrink-0 text-[10px] font-medium px-1 py-0.5 rounded ' + (s._type === 'station' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-blue-900/30 text-blue-400')}>{s._type === 'station' ? 'Station' : 'Location'}</span>
-                  <span className="truncate">{s.display_name}</span>
-                </button>
-              })}
-            </div>
-          )}
-        </div>
+        <MapSearchBar mapRef={mapRef} onLocationSelect={handleSearchSelect} />
         <div className="flex items-center gap-1.5 pointer-events-auto">
           <button onClick={findMyLocation} className={'bg-gray-900/90 backdrop-blur-md border rounded-xl p-2.5 shadow-lg hover:bg-gray-800 transition-all ' + (isLocating ? 'border-emerald-400 ring-2 ring-emerald-400/50' : 'border-gray-700')} title={isLocating ? 'Locating...' : 'My location'}>
             <FiCrosshair className={'w-4 h-4 transition-colors ' + (isLocating ? 'text-emerald-300' : 'text-emerald-400') + (isLocating ? ' animate-pulse' : '')} />
@@ -278,6 +265,10 @@ export default function MapView({ routePlan }) {
             </div>
           )}
           </div>
+          <button onClick={function () { navigate('/dashboard') }}
+            className="bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-xl p-2.5 shadow-lg hover:bg-gray-800 transition-all" title="Dashboard">
+            <FiArrowLeft className="w-4 h-4 text-gray-400" />
+          </button>
           <button onClick={function () { navigate('/trips') }}
             className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl px-3 py-2.5 shadow-lg hover:from-emerald-600 hover:to-emerald-700 transition-all flex items-center gap-1.5 text-xs font-medium" title="Plan a Trip">
             <FiMap className="w-4 h-4" />
@@ -349,32 +340,7 @@ export default function MapView({ routePlan }) {
         })}
         <MarkerClusterGroup chunkedLoading maxClusterRadius={90} showCoverageOnHover={false} disableClusteringAtZoom={14}>
           {filteredStations.map(function (station) {
-            var lat = station.latitude, lng = station.longitude; if (!lat || !lng) return null
-            var rawStatus = (station.status || '').toUpperCase()
-            var mStatus = rawStatus === 'ACTIVE' || rawStatus === 'AVAILABLE' ? 'ACTIVE' : rawStatus === 'MAINTENANCE' ? 'MAINTENANCE' : 'INACTIVE'
-            return <Marker key={station.id} position={[lat, lng]} icon={createStationIcon(mStatus, false)}>
-              <Popup><div className="min-w-[220px]">
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <div className={'w-2 h-2 rounded-full shrink-0 ' + (mStatus === 'ACTIVE' ? 'bg-emerald-500' : mStatus === 'MAINTENANCE' ? 'bg-amber-500' : 'bg-gray-400')} />
-                    <h3 className="font-semibold text-sm text-gray-900 dark:text-white">{station.name}</h3>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-relaxed">{station.address}</p>
-                <div className="flex flex-wrap gap-1.5 mb-2.5">
-                  {station.slots && station.slots.slice(0, 3).map(function (s, si) {
-                    var connColors = { DC_ULTRA: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400', DC_FAST: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400', AC_FAST: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400', AC_SLOW: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' }
-                    var cls = connColors[s.slot_type] || 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
-                    return <span key={si} className={'text-[10px] font-medium px-1.5 py-0.5 rounded ' + cls}>{s.slot_type === 'DC_ULTRA' ? 'DC Ultra' : s.slot_type === 'DC_FAST' ? 'DC Fast' : s.slot_type === 'AC_FAST' ? 'AC Fast' : s.slot_type === 'AC_SLOW' ? 'AC Slow' : s.slot_type} {s.power_kw ? '(' + s.power_kw + 'kW)' : ''}</span>
-                  })}
-                  {station.slots && station.slots.length > 3 && <span className="text-[10px] text-gray-400 dark:text-gray-500">+{station.slots.length - 3} more</span>}
-                </div>
-                <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mb-2.5">
-                  <span className="flex items-center gap-1"><FiZap className="w-3 h-3" />{station.slots ? station.slots.filter(function (s) { return s.status === 'AVAILABLE' || s.status === 'AVAILABLE' }).length : 0} free</span>
-                </div>
-                <button onClick={function () { navigate('/stations/' + station.id + '?book=true') }} className="w-full py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiBookOpen className="w-3 h-3" /> Book Now</button>
-              </div></Popup>
-            </Marker>
+            return <StationMarker key={station.id} station={station} />
           })}
         </MarkerClusterGroup>
       </MapContainer>

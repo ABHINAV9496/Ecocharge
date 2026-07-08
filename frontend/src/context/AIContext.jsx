@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useRef, useCallback } from 'react'
 import { sendChatMessage } from '../api/ai'
+import { useAuth } from '../context/AuthContext'
 
 var AIContext = createContext(null)
 
@@ -10,6 +11,7 @@ var WELCOME_MESSAGE = {
 }
 
 export function AIProvider(props) {
+  var { user } = useAuth()
   var children = props.children
   var [messages, setMessages] = useState([WELCOME_MESSAGE])
   var [isOpen, setIsOpen] = useState(false)
@@ -27,6 +29,16 @@ export function AIProvider(props) {
 
   var sendMessage = useCallback(async function (text) {
     if (!text.trim() || isStreaming) return
+
+    if (!user) {
+      setMessages(function (prev) {
+        return prev.concat([
+          { id: 'msg-' + Date.now(), role: 'user', content: text },
+          { id: 'msg-' + (Date.now() + 1), role: 'assistant', content: 'Please log in to use the AI assistant.' },
+        ])
+      })
+      return
+    }
 
     var userMsgId = 'msg-' + Date.now()
     var assistantMsgId = 'msg-' + (Date.now() + 1)
@@ -106,7 +118,7 @@ export function AIProvider(props) {
       setIsStreaming(false)
       abortRef.current = null
     }
-  }, [isStreaming, messages])
+  }, [isStreaming, messages, user])
 
   function clearChat() {
     setMessages([WELCOME_MESSAGE])

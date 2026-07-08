@@ -40,6 +40,8 @@ export default function TripPlanner() {
   var whatIfTimer = useRef(null)
   var [chargerType, setChargerType] = useState('all')
   var [comparison, setComparison] = useState(null)
+  var [stopPage, setStopPage] = useState(1)
+  var [stopSort, setStopSort] = useState('order')
   var [comparing, setComparing] = useState(false)
 
   async function geocode(query, type) {
@@ -347,6 +349,22 @@ export default function TripPlanner() {
   var chargingTime = bp ? bp.total_charge_time_seconds : 0
   var totalCost = bp ? bp.total_cost : 0
 
+  var STOPS_PER_PAGE = 3
+  var sortedStops = bp && stopCount > 0 ? [...bp.stops].sort(function (a, b) {
+    if (stopSort === 'cost_asc') return a.cost - b.cost
+    if (stopSort === 'cost_desc') return b.cost - a.cost
+    if (stopSort === 'time_asc') return (a.charge_time_seconds || 0) - (b.charge_time_seconds || 0)
+    if (stopSort === 'time_desc') return (b.charge_time_seconds || 0) - (a.charge_time_seconds || 0)
+    return (a.stop_index || 0) - (b.stop_index || 0)
+  }) : []
+  var totalPages = Math.max(1, Math.ceil(sortedStops.length / STOPS_PER_PAGE))
+  var safePage = Math.min(stopPage, totalPages)
+  var displayStops = sortedStops.slice((safePage - 1) * STOPS_PER_PAGE, safePage * STOPS_PER_PAGE)
+  var distLookup = {}
+  if (bp) {
+    bp.stops.forEach(function (s) { distLookup[s.stop_index] = s.distance_from_start_km })
+  }
+
   // === Calculation Validation ===
   var validationWarnings = []
   if (bp && stopCount > 0) {
@@ -456,7 +474,7 @@ export default function TripPlanner() {
               <span className="hidden sm:inline">Quick Compare</span>
             </button>
           </div>
-          {isLoading && progressMessage && <div className="text-xs text-emerald-600 dark:text-emerald-400 text-center animate-pulse">{progressMessage}</div>}
+          {isLoading && progressMessage && <div className="flex items-center justify-center gap-2 py-1.5"><div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-emerald-500 border-t-transparent" /><span className="text-xs text-emerald-600 dark:text-emerald-400">{progressMessage}</span></div>}
 
           {error && <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-xl">{error}</div>}
 
@@ -608,32 +626,75 @@ export default function TripPlanner() {
               </div>
             </details>
 
-            {stopCount > 0 && bp.stops.map(function (stop, i) {
-              var prevDist = i > 0 ? bp.stops[i - 1].distance_from_start_km : 0
-              var legDist = stop.distance_from_start_km - prevDist
-              var chargerLabelText = chargerLabel(stop.slot_type)
-              var chargerColor = stop.slot_type && stop.slot_type.startsWith('DC') ? 'text-purple-600 dark:text-purple-400' : 'text-amber-600 dark:text-amber-400'
-              var chargerBg = stop.slot_type && stop.slot_type.startsWith('DC') ? 'bg-purple-100 dark:bg-purple-900/20' : 'bg-amber-100 dark:bg-amber-900/20'
-              return (
-                <div key={i} className="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-[10px] font-bold text-gray-500">{i + 1}</div>
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white">{stop.station_name || 'Stop ' + (i + 1)}</span>
-                    </div>
-                    <span className={'text-[10px] font-medium px-1.5 py-0.5 rounded ' + chargerBg + ' ' + chargerColor}>{chargerLabelText}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-gray-500">
-                    <span className="flex items-center gap-1"><FiNavigation className="w-3 h-3 text-gray-400" />{legDist.toFixed(1)} km</span>
-                    <span className="flex items-center gap-1"><FiZap className="w-3 h-3 text-gray-400" />{stop.charger_power_kw || '?'} kW</span>
-                    <span className="flex items-center gap-1"><FiBatteryCharging className="w-3 h-3 text-gray-400" />{stop.arrival_soc_percent}% → {stop.departure_soc_percent}%</span>
-                    <span className="flex items-center gap-1"><FiClock className="w-3 h-3 text-gray-400" />{formatDuration(stop.charge_time_seconds)}</span>
-                    <span className="flex items-center gap-1"><FiDollarSign className="w-3 h-3 text-gray-400" />{'\u20B9' + Math.round(stop.cost).toLocaleString('en-IN')}</span>
-                    {stop.distance_from_start_km != null && <span className="flex items-center gap-1"><FiMapPin className="w-3 h-3 text-gray-400" />{stop.distance_from_start_km.toFixed(0)} km total</span>}
+            {stopCount > 0 && (
+              <>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold text-gray-900 dark:text-white">
+                    Charging Stops <span className="text-gray-400 font-normal">({stopCount})</span>
+                  </h4>
+                  <div className="flex items-center gap-1.5">
+                    <label className="text-[10px] text-gray-400">Sort:</label>
+                    <select value={stopSort}
+                      onChange={function (e) { setStopSort(e.target.value); setStopPage(1) }}
+                      className="text-[11px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 text-gray-700 dark:text-gray-300 outline-none focus:ring-2 focus:ring-emerald-500 transition-all cursor-pointer"
+                    >
+                      <option value="order">Stop Order</option>
+                      <option value="cost_asc">Cost ↓</option>
+                      <option value="cost_desc">Cost ↑</option>
+                      <option value="time_asc">Charge Time ↓</option>
+                      <option value="time_desc">Charge Time ↑</option>
+                    </select>
                   </div>
                 </div>
-              )
-            })}
+
+                {displayStops.map(function (stop, i) {
+                  var stopIdx = stop.stop_index || 0
+                  var prevStopDist = distLookup[stopIdx - 1] || 0
+                  var legDist = (stop.distance_from_start_km || 0) - prevStopDist
+                  var chargerLabelText = chargerLabel(stop.slot_type)
+                  var isDC = stop.slot_type && stop.slot_type.startsWith('DC')
+                  var chargerColor = isDC ? 'text-purple-600 dark:text-purple-400' : 'text-amber-600 dark:text-amber-400'
+                  var chargerBg = isDC ? 'bg-purple-100 dark:bg-purple-900/20' : 'bg-amber-100 dark:bg-amber-900/20'
+                  return (
+                    <div key={stop.stop_index || i} className="p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                      <div className="flex items-center justify-between mb-2.5">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-xs font-bold text-emerald-600 dark:text-emerald-400">{stopIdx}</div>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white">{stop.station_name || 'Stop ' + stopIdx}</span>
+                        </div>
+                        <span className={'text-[10px] font-medium px-2 py-0.5 rounded-full ' + chargerBg + ' ' + chargerColor}>{chargerLabelText}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] text-gray-500">
+                        <span className="flex items-center gap-1"><FiNavigation className="w-3 h-3 text-gray-400" />{legDist.toFixed(1)} km</span>
+                        <span className="flex items-center gap-1"><FiZap className="w-3 h-3 text-gray-400" />{stop.charger_power_kw || '?'} kW</span>
+                        <span className="flex items-center gap-1"><FiBatteryCharging className="w-3 h-3 text-gray-400" /><span className="text-emerald-600 dark:text-emerald-400 font-medium">{stop.arrival_soc_percent}%</span> → <span className="text-emerald-600 dark:text-emerald-400 font-medium">{stop.departure_soc_percent}%</span></span>
+                        <span className="flex items-center gap-1"><FiClock className="w-3 h-3 text-gray-400" />{formatDuration(stop.charge_time_seconds)}</span>
+                        <span className="flex items-center gap-1"><FiDollarSign className="w-3 h-3 text-gray-400" /><span className="text-gray-700 dark:text-gray-200 font-medium">{'\u20B9' + Math.round(stop.cost).toLocaleString('en-IN')}</span></span>
+                        {stop.distance_from_start_km != null && <span className="flex items-center gap-1"><FiMapPin className="w-3 h-3 text-gray-400" />{stop.distance_from_start_km.toFixed(0)} km</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-1">
+                    <button onClick={function () { setStopPage(Math.max(1, stopPage - 1)) }}
+                      disabled={stopPage <= 1}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      Previous
+                    </button>
+                    <span className="text-[11px] text-gray-400">Page {stopPage} of {totalPages}</span>
+                    <button onClick={function () { setStopPage(Math.min(totalPages, stopPage + 1)) }}
+                      disabled={stopPage >= totalPages}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
 
             {stopCount === 0 && (
               <div className="text-center py-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
