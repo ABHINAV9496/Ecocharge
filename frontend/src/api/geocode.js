@@ -1,7 +1,7 @@
 var cache = new Map()
 var CACHE_TTL = 300000
 
-export async function searchLocations(query, limit) {
+export async function searchLocations(query, limit, signal) {
   if (limit === undefined) limit = 5
   if (!query || !query.trim()) return []
 
@@ -11,9 +11,9 @@ export async function searchLocations(query, limit) {
     return cached.data
   }
 
-  var data = await tryNominatim(query, limit)
+  var data = await tryBackendProxy(query, limit, signal)
   if (!data || data.length === 0) {
-    data = await tryPhoton(query, limit)
+    data = await tryPhoton(query, limit, signal)
     if (data) {
       data = data.filter(function (r) {
         var lat = parseFloat(r.lat)
@@ -30,10 +30,10 @@ export async function searchLocations(query, limit) {
   return data || []
 }
 
-async function tryPhoton(query, limit) {
+async function tryPhoton(query, limit, signal) {
   try {
-    var url = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(query) + '&limit=' + limit + '&lang=en'
-    var res = await fetch(url)
+    var url = 'https://photon.komoot.io/api/?q=' + encodeURIComponent(query) + '&limit=' + limit + '&lang=en&bbox=68,6,98,37'
+    var res = await fetch(url, { signal: signal })
     if (!res.ok) return null
     var json = await res.json()
     if (!json.features || json.features.length === 0) return null
@@ -48,19 +48,21 @@ async function tryPhoton(query, limit) {
       }
     })
   } catch (e) {
+    if (e.name === 'AbortError') return []
     console.warn('Photon geocode failed:', e)
     return null
   }
 }
 
-async function tryNominatim(query, limit) {
+async function tryBackendProxy(query, limit, signal) {
   try {
-    var res = await fetch('/api/geocode/?q=' + encodeURIComponent(query) + '&limit=' + limit)
+    var res = await fetch('/api/geocode/?q=' + encodeURIComponent(query) + '&limit=' + limit, { signal: signal })
     if (!res.ok) return null
     var data = await res.json()
     return Array.isArray(data) ? data : null
   } catch (e) {
-    console.warn('Nominatim fallback failed:', e)
+    if (e.name === 'AbortError') return []
+    console.warn('Backend geocode proxy failed:', e)
     return null
   }
 }
