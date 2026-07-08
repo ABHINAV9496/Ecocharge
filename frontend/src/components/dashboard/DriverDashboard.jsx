@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FiUser, FiTruck, FiBatteryCharging, FiCalendar, FiX, FiBarChart2, FiMap, FiNavigation, FiBell, FiDollarSign, FiPlus, FiArrowRight, FiPhone, FiPlay, FiCheckCircle } from 'react-icons/fi'
-import { getProfile, updateProfile } from '../../api/auth'
+import { updateProfile } from '../../api/auth'
 import { getBookings, cancelBooking, startCharging, completeCharging } from '../../api/bookings'
 import { getTrips } from '../../api/trips'
-import { getNotifications } from '../../api/notifications'
 import { formatCurrency, getSlotTypeColor } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
+import { useAuth } from '../../context/AuthContext'
+import { useNotifications } from '../../context/NotificationContext'
 import { SkeletonStats } from '../layout/Skeleton'
 import PaymentHistoryCard from '../payments/PaymentHistoryCard'
 import CurrentWeatherWidget from '../weather/CurrentWeatherWidget'
@@ -31,42 +32,40 @@ export default function DriverDashboard() {
   var [form, setForm] = useState({})
   var [loading, setLoading] = useState(true)
   var [trips, setTrips] = useState([])
-  var [unreadCount, setUnreadCount] = useState(0)
 
   var navigate = useNavigate()
   var showToast = useToast()
+  var auth = useAuth()
+  var notifCtx = useNotifications()
+  var unreadCount = notifCtx.unreadCount
   var [profileError, setProfileError] = useState('')
   var [bookingError, setBookingError] = useState('')
   var [updateError, setUpdateError] = useState('')
 
   useEffect(function () {
-    async function loadData() {
-      try {
-        var profileResponse = await getProfile()
-        setProfile(profileResponse.data)
-        setForm(profileResponse.data)
-      } catch (error) {
-        console.error('Failed to load profile:', error)
-        setProfileError('Could not load your profile. Make sure the backend is running.')
-      }
+    if (auth.user) {
+      setProfile(auth.user)
+      setForm(auth.user)
+    }
+  }, [auth.user])
 
-      try {
-        var bookingResponse = await getBookings()
-        setBookings(bookingResponse.data)
-      } catch (error) {
-        console.error('Failed to load bookings:', error)
+  useEffect(function () {
+    async function loadData() {
+      var results = await Promise.allSettled([
+        getBookings(),
+        getTrips(),
+      ])
+
+      if (results[0].status === 'fulfilled') {
+        setBookings(results[0].value.data)
+      } else {
+        console.error('Failed to load bookings:', results[0].reason)
         setBookingError('Could not load bookings.')
       }
 
-      try {
-        var tripsRes = await getTrips()
-        setTrips(tripsRes.data || [])
-      } catch (e) { /* ignore */ }
-
-      try {
-        var notifRes = await getNotifications({ page: 1, page_size: 1 })
-        setUnreadCount(notifRes.data.unread_count || 0)
-      } catch (e) { /* ignore */ }
+      if (results[1].status === 'fulfilled') {
+        setTrips(results[1].value.data || [])
+      }
 
       setLoading(false)
     }

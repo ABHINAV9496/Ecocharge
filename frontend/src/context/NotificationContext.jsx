@@ -1,11 +1,13 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import { useEvents } from './EventContext'
+import { useAuth } from './AuthContext'
 import { getNotifications, markRead as markReadApi, markAllRead as markAllReadApi, deleteNotification as deleteApi } from '../api/notifications'
 
 var NotificationContext = createContext(null)
 
 export function NotificationProvider(props) {
   var { addListener, connected } = useEvents()
+  var { user } = useAuth()
   var [notifications, setNotifications] = useState([])
   var [unreadCount, setUnreadCount] = useState(0)
   var [loading, setLoading] = useState(true)
@@ -41,15 +43,17 @@ export function NotificationProvider(props) {
   }, [])
 
   useEffect(function () {
+    if (!user) return
     fetchNotifications(1, false)
-  }, [fetchNotifications])
+  }, [fetchNotifications, user])
 
   useEffect(function () {
+    if (!user) return
     if (connected && !prevConnectedRef.current) {
       fetchNotifications(1, false)
     }
     prevConnectedRef.current = connected
-  }, [connected, fetchNotifications])
+  }, [connected, fetchNotifications, user])
 
   var loadMore = useCallback(function () {
     if (hasMoreRef.current && !loadingRef.current) {

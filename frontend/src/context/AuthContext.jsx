@@ -36,10 +36,10 @@ export function AuthProvider(props) {
     return null
   })
 
-  // While we're checking if the user is logged in, show a loading state
-  var [loading, setLoading] = useState(true)
+  // Start as not loading — skip the loading blocker
+  var [loading, setLoading] = useState(false)
 
-  // On first load, check if we have a saved session
+  // On first load, restore session from localStorage (instant, no delay)
   useEffect(function () {
     var token = localStorage.getItem('access_token')
     var savedUser = localStorage.getItem('user')
@@ -49,7 +49,7 @@ export function AuthProvider(props) {
       // Restore from localStorage immediately so the UI isn't blank
       setUser(parsedUser)
 
-      // Then fetch fresh profile from backend to ensure role etc. are up-to-date
+      // Background-fetch fresh profile — doesn't block rendering
       getProfile()
         .then(function (res) {
           var freshUser = Object.assign({}, parsedUser, res.data)
@@ -60,9 +60,6 @@ export function AuthProvider(props) {
           console.error('Auth: profile fetch failed — token may be expired', err)
         })
     }
-
-    // Done checking, stop showing the loading spinner
-    setLoading(false)
   }, [])  // Empty array means this runs only once when the app starts
 
   // Save user info and tokens after successful login
