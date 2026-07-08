@@ -1,11 +1,11 @@
 ﻿import { useState, useEffect } from 'react'
 import { Navigate } from 'react-router-dom'
-import { FiMapPin, FiPlus, FiChevronLeft, FiChevronRight, FiZap, FiEdit2, FiTrash2, FiUsers, FiCalendar, FiDollarSign, FiTrendingUp, FiRefreshCw, FiBarChart2, FiCheckCircle, FiXCircle, FiClock, FiUser, FiSearch } from 'react-icons/fi'
+import { FiMapPin, FiPlus, FiChevronLeft, FiChevronRight, FiZap, FiEdit2, FiTrash2, FiUsers, FiCalendar, FiDollarSign, FiTrendingUp, FiRefreshCw, FiBarChart2, FiCheckCircle, FiXCircle, FiClock, FiUser, FiSearch, FiStar } from 'react-icons/fi'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import Navbar from '../components/layout/Navbar'
 import Sidebar from '../components/layout/Sidebar'
-import { getStations, getMyStations, createStation, updateStation, deleteStation, getStationStats } from '../api/stations'
+import { getStations, getMyStations, createStation, updateStation, deleteStation, getStationStats, getOwnerRevenue, getReviews, getMaintenanceSchedules } from '../api/stations'
 import { getBookings } from '../api/bookings'
 import { getPaymentHistory, deletePayment } from '../api/payments'
 import { getUsers, updateUserRole, deleteUser } from '../api/users'
@@ -51,6 +51,7 @@ function OverviewTab() {
   var [stats, setStats] = useState(null)
   var [stations, setStations] = useState([])
   var [bookings, setBookings] = useState([])
+  var [revenueByStation, setRevenueByStation] = useState([])
   var [loading, setLoading] = useState(true)
 
   useEffect(function () {
@@ -58,10 +59,12 @@ function OverviewTab() {
       getStationStats(),
       getStations({ page_size: 200 }),
       getBookings(),
-    ]).then(function ([statsRes, stationsRes, bookingsRes]) {
+      getOwnerRevenue(),
+    ]).then(function ([statsRes, stationsRes, bookingsRes, revRes]) {
       setStats(statsRes.data)
       setStations(stationsRes.data.results || stationsRes.data)
       setBookings(bookingsRes.data)
+      setRevenueByStation(revRes.data || [])
     }).catch(function () { }).finally(function () { setLoading(false) })
   }, [])
 
@@ -134,6 +137,46 @@ function OverviewTab() {
           )}
         </div>
       </div>
+
+      {revenueByStation.length > 0 && (
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue by Station</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={revenueByStation.slice(0, 15)}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="station_name" tick={{ fontSize: 8 }} stroke="#6b7280" />
+                <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" />
+                <Tooltip />
+                <Bar dataKey="total_revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Slot Occupancy %</h3>
+            {stations.some(function (s) { return (s.slots || []).length > 0 }) ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={stations.filter(function (s) { return (s.slots || []).length > 0 }).map(function (s) {
+                  var total = s.slots.length
+                  var occupied = s.slots.filter(function (sl) { return sl.status === 'OCCUPIED' || sl.status === 'FAULT' }).length
+                  return { name: s.name.length > 12 ? s.name.slice(0, 12) + '...' : s.name, occupancy: Math.round((occupied / total) * 100) }
+                })}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="name" tick={{ fontSize: 8 }} stroke="#6b7280" />
+                  <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" domain={[0, 100]} />
+                  <Tooltip />
+                  <Bar dataKey="occupancy" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+                <FiBarChart2 className="w-8 h-8 mb-2" />
+                <p className="text-sm">No slot data</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -222,6 +265,27 @@ function UsersTab() {
 
 // ===== STATION TABLE (shared) =====
 function StationTable({ stations, loading, onEdit, onDelete }) {
+  var [expandedId, setExpandedId] = useState(null)
+  var [reviewsData, setReviewsData] = useState({})
+  var [maintenanceData, setMaintenanceData] = useState({})
+
+  function toggleExpand(stationId) {
+    if (expandedId === stationId) { setExpandedId(null); return }
+    setExpandedId(stationId)
+    if (!reviewsData[stationId]) {
+      getReviews(stationId).then(function (res) { setReviewsData(Object.assign({}, reviewsData, { [stationId]: res.data || [] })) }).catch(function () {})
+    }
+    if (!maintenanceData[stationId]) {
+      getMaintenanceSchedules(stationId).then(function (res) { setMaintenanceData(Object.assign({}, maintenanceData, { [stationId]: res.data || [] })) }).catch(function () {})
+    }
+  }
+
+  function renderStars(rating) {
+    return Array.from({ length: 5 }, function (_, i) {
+      return <FiStar key={i} className={'w-3 h-3 ' + (i < rating ? 'text-amber-400 fill-amber-400' : 'text-gray-300 dark:text-gray-600')} />
+    })
+  }
+
   if (loading) {
     return <div className="space-y-2 p-4">{[1,2,3,4,5].map(function (i) { return <div key={i} className="h-12 rounded-xl bg-gray-200 dark:bg-gray-700 animate-pulse" /> })}</div>
   }
@@ -234,20 +298,62 @@ function StationTable({ stations, loading, onEdit, onDelete }) {
         var slots = st.slots || []
         var slotSummary = {}
         slots.forEach(function (s) { var label = SLOT_TYPE_LABELS[s.slot_type] || s.slot_type; slotSummary[label] = (slotSummary[label] || 0) + 1 })
+        var availCount = slots.filter(function (s) { return s.status === 'AVAILABLE' }).length
+        var occCount = slots.filter(function (s) { return s.status === 'OCCUPIED' }).length
+        var faultCount = slots.filter(function (s) { return s.status === 'FAULT' }).length
+        var isExpanded = expandedId === st.id
+        var reviews = reviewsData[st.id]
+        var maintenance = maintenanceData[st.id]
         return (
-          <div key={st.id} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <h4 className="font-semibold text-sm text-gray-900 dark:text-white truncate">{st.name}</h4>
-                <span className={'px-2 py-0.5 text-xs font-medium rounded-full ' + (st.status === 'ACTIVE' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600' : 'bg-gray-100 dark:bg-gray-700 text-gray-600')}>{st.status}</span>
+          <div key={st.id}>
+            <div className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-semibold text-sm text-gray-900 dark:text-white truncate">{st.name}</h4>
+                  <span className={'px-2 py-0.5 text-xs font-medium rounded-full ' + (st.status === 'ACTIVE' ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600' : 'bg-gray-100 dark:bg-gray-700 text-gray-600')}>{st.status}</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5 truncate">{st.address}</p>
+                <p className="text-xs text-gray-400 mt-0.5">Owner: {st.owner_username} | Slots: {Object.entries(slotSummary).map(function (e) { return e[0] + ': ' + e[1] }).join(', ') || 'None'}</p>
+                {slots.length > 0 && (
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-[10px] font-medium text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">{availCount} Available</span>
+                    {occCount > 0 && <span className="text-[10px] font-medium text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">{occCount} Occupied</span>}
+                    {faultCount > 0 && <span className="text-[10px] font-medium text-red-500 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded">{faultCount} Fault</span>}
+                  </div>
+                )}
               </div>
-              <p className="text-xs text-gray-500 mt-0.5 truncate">{st.address}</p>
-              <p className="text-xs text-gray-400 mt-0.5">Owner: {st.owner_username} | Slots: {Object.entries(slotSummary).map(function (e) { return e[0] + ': ' + e[1] }).join(', ') || 'None'}</p>
-            </div>
-            {onEdit && (
               <div className="flex items-center gap-1 shrink-0 ml-3">
-                <button onClick={function () { onEdit(st) }} className="p-2 text-gray-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-all"><FiEdit2 className="w-3.5 h-3.5" /></button>
-                <button onClick={function () { onDelete(st.id) }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"><FiTrash2 className="w-3.5 h-3.5" /></button>
+                <button onClick={function () { toggleExpand(st.id) }} className="p-2 text-gray-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-all" title="Details">
+                  <FiBarChart2 className={'w-3.5 h-3.5 ' + (isExpanded ? 'text-emerald-500' : '')} />
+                </button>
+                {onEdit && (
+                  <>
+                    <button onClick={function () { onEdit(st) }} className="p-2 text-gray-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-all"><FiEdit2 className="w-3.5 h-3.5" /></button>
+                    <button onClick={function () { onDelete(st.id) }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all"><FiTrash2 className="w-3.5 h-3.5" /></button>
+                  </>
+                )}
+              </div>
+            </div>
+            {isExpanded && (
+              <div className="px-4 pb-4 bg-gray-50 dark:bg-gray-900 space-y-3">
+                <div>
+                  <h5 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Reviews</h5>
+                  {reviews ? (reviews.length === 0 ? <p className="text-[10px] text-gray-400">No reviews</p> : reviews.map(function (r) {
+                    return <div key={r.id} className="mb-1.5 p-2 bg-white dark:bg-gray-800 rounded-lg flex items-center justify-between">
+                      <div><span className="text-[10px] font-medium text-gray-700 dark:text-gray-300">{r.username}</span><div className="flex">{renderStars(r.rating)}</div></div>
+                      {r.comment && <span className="text-[10px] text-gray-400 ml-2 truncate max-w-[200px]">{r.comment}</span>}
+                    </div>
+                  })) : <div className="text-[10px] text-gray-400">Loading...</div>}
+                </div>
+                <div>
+                  <h5 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Maintenance</h5>
+                  {maintenance ? (maintenance.length === 0 ? <p className="text-[10px] text-gray-400">No scheduled maintenance</p> : maintenance.slice(0, 3).map(function (m) {
+                    return <div key={m.id} className="mb-1.5 p-2 bg-white dark:bg-gray-800 rounded-lg flex items-center justify-between text-[10px]">
+                      <span className="text-gray-700 dark:text-gray-300">{m.reason}</span>
+                      <span className={'px-1.5 py-0.5 font-medium rounded-full ' + (m.status === 'SCHEDULED' ? 'text-blue-500 bg-blue-100' : m.status === 'ACTIVE' ? 'text-amber-500 bg-amber-100' : 'text-emerald-500 bg-emerald-100')}>{m.status}</span>
+                    </div>
+                  })) : <div className="text-[10px] text-gray-400">Loading...</div>}
+                </div>
               </div>
             )}
           </div>
@@ -379,22 +485,26 @@ function BookingsTab() {
   var [loading, setLoading] = useState(true)
   var [statusFilter, setStatusFilter] = useState('ALL')
   var [search, setSearch] = useState('')
+  var [page, setPage] = useState(1)
+  var [totalPages, setTotalPages] = useState(1)
 
-  function loadData(s, q) {
+  function loadData(s, q, p) {
     setLoading(true)
     var params = {}
+    if (p > 1) params.page = p
     if (q) params.q = q
+    if (s && s !== 'ALL') params.status = s
     getBookings(params).then(function (res) {
       var data = res.data.results || res.data
       setBookings(Array.isArray(data) ? data : [])
+      if (res.data.count !== undefined) setTotalPages(Math.ceil((res.data.count || 0) / 10) || 1)
     }).catch(function () { }).finally(function () { setLoading(false) })
   }
 
-  useEffect(function () { loadData(statusFilter, search) }, [statusFilter])
+  useEffect(function () { loadData(statusFilter, search, page) }, [statusFilter, page])
 
-  function handleSearch(v) { setSearch(v); loadData(statusFilter, v) }
-
-  var filtered = statusFilter === 'ALL' ? bookings : bookings.filter(function (b) { return b.status === statusFilter })
+  function handleSearch(v) { setSearch(v); setPage(1); loadData(statusFilter, v, 1) }
+  function handleStatus(s) { setStatusFilter(s); setPage(1); loadData(s, search, 1) }
 
   var STATUS_COLORS = { PENDING: 'text-amber-500 bg-amber-100 dark:bg-amber-900/30', CONFIRMED: 'text-blue-500 bg-blue-100 dark:bg-blue-900/30', IN_PROGRESS: 'text-purple-500 bg-purple-100 dark:bg-purple-900/30', COMPLETED: 'text-emerald-500 bg-emerald-100 dark:bg-emerald-900/30', CANCELLED: 'text-red-500 bg-red-100 dark:bg-red-900/30' }
 
@@ -404,7 +514,7 @@ function BookingsTab() {
       <div className="flex flex-wrap gap-2 mb-4">
         <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl w-fit">
           {['ALL', 'PENDING', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].map(function (s) {
-            return <button key={s} onClick={function () { setStatusFilter(s) }} className={'px-3 py-1.5 text-xs font-medium rounded-lg ' + (statusFilter === s ? 'bg-white dark:bg-gray-700 text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>{s === 'ALL' ? 'All' : s}</button>
+            return <button key={s} onClick={function () { handleStatus(s) }} className={'px-3 py-1.5 text-xs font-medium rounded-lg ' + (statusFilter === s ? 'bg-white dark:bg-gray-700 text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>{s === 'ALL' ? 'All' : s}</button>
           })}
         </div>
         <div className="relative flex-1 min-w-[200px]">
@@ -416,11 +526,11 @@ function BookingsTab() {
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
         {loading ? (
           <div className="space-y-2 p-4">{[1,2,3,4,5].map(function (i) { return <div key={i} className="h-12 rounded-xl bg-gray-200 dark:bg-gray-700 animate-pulse" /> })}</div>
-        ) : filtered.length === 0 ? (
+        ) : bookings.length === 0 ? (
           <div className="text-center py-12"><FiCalendar className="w-8 h-8 text-gray-300 mx-auto mb-3" /><p className="text-sm text-gray-500">No bookings found</p></div>
         ) : (
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
-            {filtered.map(function (b) {
+            {bookings.map(function (b) {
               var sc = STATUS_COLORS[b.status] || STATUS_COLORS.PENDING
               var stationName = b.slot_details ? b.slot_details.station_name : 'Slot #' + b.slot
               return (
@@ -438,6 +548,7 @@ function BookingsTab() {
             })}
           </div>
         )}
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
       </div>
     </div>
   )
