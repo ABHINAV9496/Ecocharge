@@ -34,7 +34,6 @@ export default function Login() {
     window.location.href = target
   }
 
-  // Load Google Sign-In script
   useEffect(function () {
     if (!GOOGLE_CLIENT_ID || !googleBtnRef.current) return
 
@@ -116,36 +115,34 @@ export default function Login() {
   var hasGoogleConfig = GOOGLE_CLIENT_ID.length > 0
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-emerald-50 dark:from-gray-950 dark:via-gray-900 dark:to-emerald-950 px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950 px-4">
+      <div className="w-full max-w-sm">
 
-        {/* HEADER */}
         <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-emerald-500 transition-colors mb-4">
+          <Link to="/" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-emerald-600 transition-colors mb-6">
             ← Back to Home
           </Link>
-          <div className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-emerald-500/20">
-            <FiBatteryCharging className="w-8 h-8 text-white" />
+          <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm">
+            <FiBatteryCharging className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
             Welcome back
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-gray-400 dark:text-gray-500 mt-1 text-sm">
             Sign in to your EcoCharge account
           </p>
         </div>
 
-        {/* LOGIN FORM */}
-        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-900 rounded-2xl p-8 shadow-xl border border-gray-200 dark:border-gray-800">
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-900 rounded-2xl p-7 border border-emerald-100 dark:border-emerald-900/30">
 
           {errorMessage && (
-            <div className="mb-5 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-lg">
+            <div className="mb-5 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-xl">
               {errorMessage}
             </div>
           )}
 
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Username</label>
+            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1.5">Username</label>
             <div className="relative">
               <FiUser className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
@@ -154,15 +151,15 @@ export default function Login() {
                 onChange={function (e) { updateField('username', e.target.value) }}
                 placeholder="Enter your username"
                 required
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                className="w-full pl-10 pr-4 py-2.5 border border-emerald-200 dark:border-emerald-800/50 rounded-xl bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
               />
             </div>
           </div>
 
           <div className="mb-6">
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-              <Link to="/forgot-password" className="text-xs font-medium text-emerald-500 hover:text-emerald-600 transition-colors">
+              <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Password</label>
+              <Link to="/forgot-password" className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors">
                 Forgot?
               </Link>
             </div>
@@ -174,7 +171,7 @@ export default function Login() {
                 onChange={function (e) { updateField('password', e.target.value) }}
                 placeholder="Enter your password"
                 required
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                className="w-full pl-10 pr-4 py-2.5 border border-emerald-200 dark:border-emerald-800/50 rounded-xl bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
               />
             </div>
           </div>
@@ -182,22 +179,20 @@ export default function Login() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-medium hover:from-emerald-600 hover:to-emerald-700 shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full py-3 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm"
           >
             {isLoading ? 'Signing in...' : 'Sign In'}
             {!isLoading && <FiArrowRight className="w-4 h-4" />}
           </button>
 
-          {/* Divider */}
           {hasGoogleConfig && (
             <div className="flex items-center gap-3 my-5">
-              <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700" />
+              <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
               <span className="text-xs text-gray-400 uppercase">or</span>
-              <div className="flex-1 h-px bg-gray-300 dark:bg-gray-700" />
+              <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
             </div>
           )}
 
-          {/* Google Sign-In button */}
           {hasGoogleConfig && (
             <div>
               <div ref={googleBtnRef} className="flex justify-center" />
@@ -207,9 +202,9 @@ export default function Login() {
             </div>
           )}
 
-          <p className="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
+          <p className="mt-6 text-center text-sm text-gray-400 dark:text-gray-500">
             Don't have an account?{' '}
-            <Link to="/register" className="text-emerald-600 dark:text-emerald-400 font-medium hover:underline">
+            <Link to="/register" className="text-emerald-600 dark:text-emerald-400 font-medium hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors">
               Create one
             </Link>
           </p>

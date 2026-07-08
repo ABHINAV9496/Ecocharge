@@ -1,5 +1,4 @@
-import { Link } from 'react-router-dom'
-import { FiMapPin, FiMessageCircle, FiTrendingUp, FiNavigation, FiBatteryCharging, FiSliders } from 'react-icons/fi'
+import { FiMapPin, FiMessageCircle, FiCloud, FiNavigation, FiBatteryCharging, FiCalendar } from 'react-icons/fi'
 import Navbar from '../components/layout/Navbar'
 
 var FEATURES = [
@@ -24,14 +23,14 @@ var FEATURES = [
     desc: 'Ask trip questions in natural language. EcoBot remembers your car model and preferences across conversations for personalized advice.',
   },
   {
-    icon: FiTrendingUp,
-    title: 'Smart Predictions',
-    desc: 'ML-powered battery consumption predictions considering elevation, weather, traffic, and your specific EV model for accurate range estimates.',
+    icon: FiCloud,
+    title: 'Real-time Weather',
+    desc: 'Current weather, 24-hour forecast, 7-day outlook, and route-specific conditions via Open-Meteo. Plan around rain, heat, or wind with confidence.',
   },
   {
-    icon: FiSliders,
-    title: 'Customizable Range',
-    desc: 'Adjust your battery level with a slider to see real-time range estimates. Plan exactly when and where you need to stop to charge.',
+    icon: FiCalendar,
+    title: 'Bookings & Payments',
+    desc: 'Reserve charging slots with concurrent-safe booking and secure Razorpay payments. Start, complete, or cancel sessions with full payment lifecycle.',
   },
 ]
 
@@ -40,33 +39,35 @@ export default function Features() {
     <div className="min-h-screen bg-white dark:bg-gray-950">
       <Navbar />
       <main>
-        <section className="pt-32 pb-16 px-4">
+        <section className="pt-36 pb-16 px-4">
           <div className="max-w-5xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-ev-green/10 text-ev-green rounded-full text-sm font-medium mb-6">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full text-sm font-medium mb-8">
               Features
             </div>
-            <h1 className="text-4xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6">
+            <h1 className="text-4xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6 tracking-tight">
               Everything You Need<br />
-              <span className="text-ev-green">on the Road</span>
+              <span className="text-emerald-600 dark:text-emerald-400">on the Road</span>
             </h1>
-            <p className="text-lg text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
+            <p className="text-lg text-gray-800 dark:text-gray-500 max-w-2xl mx-auto">
               From finding chargers to planning multi-stop routes, EcoCharge has you covered.
             </p>
           </div>
         </section>
 
-        <section className="pb-20 px-4">
-          <div className="max-w-5xl mx-auto">
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <section className="pb-24 px-4 bg-gray-50 dark:bg-gray-950/20">
+          <div className="max-w-6xl mx-auto">
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
               {FEATURES.map(function (feature) {
                 return (
                   <div
                     key={feature.title}
-                    className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 hover:border-ev-green/50 transition-colors"
+                    className="group bg-white dark:bg-gray-900 rounded-2xl p-7 border border-emerald-100 dark:border-emerald-900/30 hover:border-emerald-200 dark:hover:border-emerald-800 transition-colors"
                   >
-                    <feature.icon className="w-10 h-10 text-ev-green mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{feature.title}</h3>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">{feature.desc}</p>
+                    <div className="w-11 h-11 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center mb-5 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/40 transition-colors">
+                      <feature.icon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2.5">{feature.title}</h3>
+                    <p className="text-sm text-gray-800 dark:text-gray-500 leading-relaxed">{feature.desc}</p>
                   </div>
                 )
               })}
@@ -74,21 +75,45 @@ export default function Features() {
           </div>
         </section>
 
-        <section className="py-16 px-4 bg-gray-50 dark:bg-gray-900">
-          <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
-              See It in Action
-            </h2>
-            <p className="text-lg text-gray-500 dark:text-gray-400 mb-8">
-              Try the interactive map and plan your first trip in seconds.
-            </p>
-            <Link
-              to="/map"
-              className="inline-flex items-center gap-2 px-8 py-3 bg-ev-green text-white rounded-xl font-medium text-lg hover:bg-green-600 transition-colors"
-            >
-              <FiMapPin className="w-5 h-5" />
-              Open Map
-            </Link>
+        <section className="py-20 px-4 bg-emerald-50/50 dark:bg-emerald-950/20">
+          <div className="max-w-5xl mx-auto">
+            <div className="text-center mb-14">
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight">
+                How It Works
+              </h2>
+              <p className="text-lg text-gray-800 dark:text-gray-500 max-w-xl mx-auto">
+                Three simple steps from planning to charging.
+              </p>
+            </div>
+            <div className="grid md:grid-cols-3 gap-8">
+              {[
+                {
+                  step: '01',
+                  title: 'Create Account',
+                  desc: 'Sign up, set up your vehicle profile with accurate battery specs, and you\'re ready to go.',
+                },
+                {
+                  step: '02',
+                  title: 'Plan Your Trip',
+                  desc: 'Enter start and destination. EcoBot suggests the best route with charging stops placed automatically.',
+                },
+                {
+                  step: '03',
+                  title: 'Charge & Go',
+                  desc: 'Navigate to any station, check real-time slot availability, book, and pay — all in one place.',
+                },
+              ].map(function (item) {
+                return (
+                  <div key={item.step} className="text-center">
+                    <div className="w-14 h-14 bg-emerald-100 dark:bg-emerald-900/40 rounded-full flex items-center justify-center mx-auto mb-5">
+                      <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{item.step}</span>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2.5">{item.title}</h3>
+                    <p className="text-sm text-gray-800 dark:text-gray-500 leading-relaxed max-w-xs mx-auto">{item.desc}</p>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </section>
       </main>

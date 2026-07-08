@@ -26,16 +26,16 @@ export default function ForgotPassword() {
 
   if (sent) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-8 text-center shadow-sm">
-          <div className="w-14 h-14 bg-emerald-100 dark:bg-emerald-900/40 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <FiCheckCircle className="w-7 h-7 text-emerald-500" />
+      <div className="min-h-screen bg-white dark:bg-gray-950 flex items-center justify-center p-4">
+        <div className="max-w-sm w-full bg-white dark:bg-gray-900 rounded-2xl border border-emerald-100 dark:border-emerald-900/30 p-8 text-center">
+          <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <FiCheckCircle className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
           </div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Check Your Email</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-            If an account with <strong>{email}</strong> exists, we've sent a password reset link.
+          <p className="text-sm text-gray-400 dark:text-gray-500 mb-6">
+            If an account with <strong className="text-gray-900 dark:text-white">{email}</strong> exists, we've sent a password reset link.
           </p>
-          <Link to="/login" className="text-sm font-medium text-emerald-500 hover:text-emerald-600 transition-colors">
+          <Link to="/login" className="text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors">
             Back to Login
           </Link>
         </div>
@@ -44,18 +44,18 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-8 shadow-sm">
-        <Link to="/login" className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 mb-6 transition-colors">
+    <div className="min-h-screen bg-white dark:bg-gray-950 flex items-center justify-center p-4">
+      <div className="max-w-sm w-full bg-white dark:bg-gray-900 rounded-2xl border border-emerald-100 dark:border-emerald-900/30 p-8">
+        <Link to="/login" className="inline-flex items-center gap-1.5 text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 mb-6 transition-colors no-underline">
           <FiArrowLeft className="w-4 h-4" />
           Back to Login
         </Link>
 
-        <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/40 rounded-xl flex items-center justify-center mb-4">
-          <FiMail className="w-6 h-6 text-emerald-500" />
+        <div className="w-11 h-11 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center mb-4">
+          <FiMail className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
         </div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Forgot Password?</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Forgot Password?</h1>
+        <p className="text-sm text-gray-400 dark:text-gray-500 mb-6">
           Enter your email address and we'll send you a link to reset your password.
         </p>
 
@@ -74,13 +74,13 @@ export default function ForgotPassword() {
               onChange={function (e) { setEmail(e.target.value) }}
               placeholder="you@example.com"
               required
-              className="w-full px-3.5 py-2.5 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+              className="w-full px-3.5 py-2.5 text-sm border border-emerald-200 dark:border-emerald-800/50 rounded-xl bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-sm font-medium rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+            className="w-full py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50 shadow-sm"
           >
             {loading ? 'Sending...' : 'Send Reset Link'}
           </button>

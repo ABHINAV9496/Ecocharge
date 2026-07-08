@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { FiBatteryCharging, FiMapPin, FiMessageCircle, FiTrendingUp, FiArrowRight } from 'react-icons/fi'
+import { FiMapPin, FiMessageCircle, FiNavigation, FiArrowRight, FiZap } from 'react-icons/fi'
 import Navbar from '../components/layout/Navbar'
 
 export default function Home() {
@@ -7,47 +7,51 @@ export default function Home() {
     <div className="min-h-screen bg-white dark:bg-gray-950">
       <Navbar />
       <main>
-        <section className="pt-32 pb-20 px-4">
+        <section className="pt-36 pb-24 px-4">
           <div className="max-w-5xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-ev-green/10 text-ev-green rounded-full text-sm font-medium mb-6">
-              <FiBatteryCharging className="w-4 h-4" />
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full text-sm font-medium mb-8">
+              <FiZap className="w-4 h-4" />
               Smart EV Trip Planning
             </div>
-            <h1 className="text-5xl md:text-7xl font-bold text-gray-900 dark:text-white mb-6 leading-tight">
+            <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold text-gray-900 dark:text-white mb-6 leading-[1.05] tracking-tight">
               Never Run Out of<br />
-              <span className="text-ev-green">Charge</span> Again
+              <span className="text-emerald-600 dark:text-emerald-400">Charge</span> Again
             </h1>
-            <p className="text-xl text-gray-500 dark:text-gray-400 max-w-2xl mx-auto mb-10">
+            <p className="text-lg md:text-xl text-gray-800 dark:text-gray-500 max-w-2xl mx-auto mb-12 leading-relaxed">
               AI-powered trip planning, real-time charger availability, and smart battery prediction
               — all in one platform.
             </p>
-            <div className="flex items-center justify-center gap-4 flex-wrap">
+            <div className="flex items-center justify-center gap-3 flex-wrap">
               <Link
                 to="/register"
-                className="px-8 py-3 bg-ev-green text-white rounded-xl font-medium text-lg hover:bg-green-600 transition-colors"
+                className="px-7 py-3 bg-emerald-600 text-white rounded-xl font-medium text-base hover:bg-emerald-700 transition-colors inline-flex items-center gap-2 shadow-sm"
               >
                 Get Started
-              </Link>
-              <Link
-                to="/map"
-                className="px-8 py-3 border-2 border-ev-green text-ev-green rounded-xl font-medium text-lg hover:bg-ev-green/5 transition-colors inline-flex items-center gap-2"
-              >
-                Try the Map
                 <FiArrowRight className="w-4 h-4" />
               </Link>
               <Link
-                to="/login"
-                className="px-8 py-3 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium text-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                to="/map"
+                className="px-7 py-3 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 rounded-xl font-medium text-base hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors inline-flex items-center gap-2"
               >
-                Sign In
+                <FiMapPin className="w-4 h-4" />
+                Try the Map
               </Link>
             </div>
           </div>
         </section>
 
-        <section className="py-20 px-4 bg-gray-50 dark:bg-gray-900">
-          <div className="max-w-5xl mx-auto">
-            <div className="grid md:grid-cols-3 gap-8">
+        <section className="pb-24 px-4 bg-gray-50 dark:bg-gray-950/20">
+          <div className="max-w-6xl mx-auto">
+            <div className="text-center mb-14">
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+                Everything you need,<br />
+                <span className="text-emerald-600 dark:text-emerald-400">nothing you don't</span>
+              </h2>
+              <p className="text-gray-800 dark:text-gray-500 max-w-xl mx-auto">
+                Built for EV drivers who want to spend more time driving and less time worrying.
+              </p>
+            </div>
+            <div className="grid md:grid-cols-3 gap-6">
               {[
                 {
                   icon: FiMapPin,
@@ -60,16 +64,18 @@ export default function Home() {
                   desc: 'Ask trip questions in natural language. EcoBot remembers your car model and preferences across conversations.',
                 },
                 {
-                  icon: FiTrendingUp,
-                  title: 'Smart Predictions',
-                  desc: 'ML-powered battery consumption predictions considering elevation, weather, traffic, and your specific EV model.',
+                  icon: FiNavigation,
+                  title: 'AI Trip Planner',
+                  desc: 'Get optimal routes with charging stops automatically placed along the way based on your EV model, battery level, and live conditions.',
                 },
               ].map(function (feature) {
                 return (
-                  <div key={feature.title} className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700">
-                    <feature.icon className="w-10 h-10 text-ev-green mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{feature.title}</h3>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm">{feature.desc}</p>
+                  <div key={feature.title} className="group bg-white dark:bg-gray-900 rounded-2xl p-7 border border-emerald-100 dark:border-emerald-900/30 hover:border-emerald-200 dark:hover:border-emerald-800 transition-colors">
+                    <div className="w-11 h-11 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center mb-5 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/40 transition-colors">
+                      <feature.icon className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2.5">{feature.title}</h3>
+                    <p className="text-sm text-gray-800 dark:text-gray-500 leading-relaxed">{feature.desc}</p>
                   </div>
                 )
               })}
