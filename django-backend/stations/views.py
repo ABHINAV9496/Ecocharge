@@ -8,7 +8,7 @@ from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.measure import D
 from drf_spectacular.utils import extend_schema
 from django.db.models import Count, Q, Sum
-from .models import ChargingStation, ChargingSlot, UserFavoriteStation, StationReview
+from .models import ChargingStation, ChargingSlot, UserFavoriteStation, StationReview, MaintenanceSchedule
 from bookings.models import Booking
 from users.models import CustomUser
 from .serializers import (
@@ -17,6 +17,8 @@ from .serializers import (
     ChargingSlotSerializer,
     FavoriteStationSerializer,
     StationReviewSerializer,
+    MaintenanceScheduleSerializer,
+    OwnerRevenueSerializer,
 )
 
 
@@ -427,4 +429,113 @@ class StationReviewListCreateView(APIView):
             serializer.save(user=request.user, station=station)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(tags=['Stations'])
+class OwnerStationRevenueView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role not in ['STATION_OWNER', 'SUPER_ADMIN']:
+            return Response({'error': 'Only station owners can view revenue'}, status=403)
+
+        stations = ChargingStation.objects.all()
+        if request.user.role == 'STATION_OWNER':
+            stations = stations.filter(owner=request.user)
+
+        revenue_data = []
+        for station in stations:
+            agg = Booking.objects.filter(
+                slot__station=station,
+                status__in=['CONFIRMED', 'IN_PROGRESS', 'COMPLETED']
+            ).aggregate(
+                total=Sum('amount_charged'),
+                count=Count('id')
+            )
+            total_revenue = float(agg['total'] or 0)
+            if total_revenue > 0:
+                revenue_data.append({
+                    'station_id': station.id,
+                    'station_name': station.name,
+                    'total_revenue': total_revenue,
+                    'booking_count': agg['count'],
+                })
+
+        revenue_data.sort(key=lambda x: x['total_revenue'], reverse=True)
+        serializer = OwnerRevenueSerializer(revenue_data, many=True)
+        return Response(serializer.data)
+
+
+@extend_schema(tags=['Stations'])
+class MaintenanceListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, station_pk):
+        try:
+            station = ChargingStation.objects.get(pk=station_pk)
+        except ChargingStation.DoesNotExist:
+            return Response({'error': 'Station not found'}, status=404)
+
+        if station.owner != request.user and request.user.role != 'SUPER_ADMIN':
+            return Response({'error': 'Not your station'}, status=403)
+
+        schedules = MaintenanceSchedule.objects.filter(station=station)
+        serializer = MaintenanceScheduleSerializer(schedules, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, station_pk):
+        try:
+            station = ChargingStation.objects.get(pk=station_pk)
+        except ChargingStation.DoesNotExist:
+            return Response({'error': 'Station not found'}, status=404)
+
+        if station.owner != request.user and request.user.role != 'SUPER_ADMIN':
+            return Response({'error': 'Not your station'}, status=403)
+
+        serializer = MaintenanceScheduleSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(station=station)
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+
+@extend_schema(tags=['Stations'])
+class MaintenanceDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, station_pk, pk):
+        try:
+            return MaintenanceSchedule.objects.get(pk=pk, station__pk=station_pk)
+        except MaintenanceSchedule.DoesNotExist:
+            return None
+
+    def get(self, request, station_pk, pk):
+        schedule = self.get_object(station_pk, pk)
+        if not schedule:
+            return Response({'error': 'Maintenance schedule not found'}, status=404)
+        if schedule.station.owner != request.user and request.user.role != 'SUPER_ADMIN':
+            return Response({'error': 'Not your station'}, status=403)
+        serializer = MaintenanceScheduleSerializer(schedule)
+        return Response(serializer.data)
+
+    def patch(self, request, station_pk, pk):
+        schedule = self.get_object(station_pk, pk)
+        if not schedule:
+            return Response({'error': 'Maintenance schedule not found'}, status=404)
+        if schedule.station.owner != request.user and request.user.role != 'SUPER_ADMIN':
+            return Response({'error': 'Not your station'}, status=403)
+        serializer = MaintenanceScheduleSerializer(schedule, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
+
+    def delete(self, request, station_pk, pk):
+        schedule = self.get_object(station_pk, pk)
+        if not schedule:
+            return Response({'error': 'Maintenance schedule not found'}, status=404)
+        if schedule.station.owner != request.user and request.user.role != 'SUPER_ADMIN':
+            return Response({'error': 'Not your station'}, status=403)
+        schedule.delete()
+        return Response({'message': 'Maintenance schedule deleted'}, status=204)
 

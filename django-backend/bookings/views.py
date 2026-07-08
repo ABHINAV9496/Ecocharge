@@ -67,6 +67,10 @@ class BookingListView(APIView):
                 Q(slot__station__name__icontains=q)
             )
 
+        status_filter = request.query_params.get('status')
+        if status_filter and status_filter != 'ALL':
+            bookings = bookings.filter(status=status_filter)
+
         page = request.query_params.get('page')
         if page:
             paginator = BookingPagination()

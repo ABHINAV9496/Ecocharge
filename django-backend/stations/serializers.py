@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework_gis.serializers import GeoFeatureModelSerializer
-from .models import ChargingStation, ChargingSlot, UserFavoriteStation, StationReview
+from .models import ChargingStation, ChargingSlot, UserFavoriteStation, StationReview, MaintenanceSchedule
 
 
 class ChargingSlotSerializer(serializers.ModelSerializer):
@@ -85,3 +85,23 @@ class StationReviewSerializer(serializers.ModelSerializer):
         model = StationReview
         fields = ['id', 'user', 'username', 'rating', 'comment', 'created_at']
         read_only_fields = ['id', 'user', 'created_at']
+
+
+class MaintenanceScheduleSerializer(serializers.ModelSerializer):
+    station_name = serializers.CharField(source='station.name', read_only=True)
+    slot_type = serializers.CharField(source='slot.slot_type', read_only=True, default=None)
+
+    class Meta:
+        model = MaintenanceSchedule
+        fields = [
+            'id', 'station', 'station_name', 'slot', 'slot_type',
+            'start_time', 'end_time', 'reason', 'status', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'station_name', 'slot_type']
+
+
+class OwnerRevenueSerializer(serializers.Serializer):
+    station_id = serializers.IntegerField()
+    station_name = serializers.CharField()
+    total_revenue = serializers.FloatField()
+    booking_count = serializers.IntegerField()

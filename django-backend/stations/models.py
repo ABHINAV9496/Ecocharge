@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.gis.db import models as gis_models
 from django.conf import settings
+from django.utils import timezone
 
 class ChargingStation(models.Model):
     class Status(models.TextChoices):
@@ -80,5 +81,33 @@ class StationReview(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.station.name} ({self.rating}/5)"
+
+
+class MaintenanceSchedule(models.Model):
+    class Status(models.TextChoices):
+        SCHEDULED = 'SCHEDULED', 'Scheduled'
+        ACTIVE = 'ACTIVE', 'Active'
+        COMPLETED = 'COMPLETED', 'Completed'
+
+    station = models.ForeignKey(
+        ChargingStation, on_delete=models.CASCADE, related_name='maintenance_schedules'
+    )
+    slot = models.ForeignKey(
+        ChargingSlot, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='maintenance_schedules'
+    )
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+    reason = models.TextField()
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.SCHEDULED
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-start_time']
+
+    def __str__(self):
+        return f"Maintenance: {self.station.name} ({self.start_time.date()}) - {self.status}"
 
 

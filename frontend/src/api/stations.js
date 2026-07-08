@@ -70,6 +70,31 @@ export function deleteSlot(stationId, slotId) {
   return apiClient.delete('/api/stations/' + stationId + '/slots/' + slotId + '/')
 }
 
+// Get revenue breakdown by station for the current owner
+export function getOwnerRevenue() {
+  return apiClient.get('/api/stations/my-stations/revenue/')
+}
+
+// Get maintenance schedules for a station
+export function getMaintenanceSchedules(stationId) {
+  return apiClient.get('/api/stations/' + stationId + '/maintenance/')
+}
+
+// Create a maintenance schedule for a station
+export function createMaintenanceSchedule(stationId, data) {
+  return apiClient.post('/api/stations/' + stationId + '/maintenance/', data)
+}
+
+// Update a maintenance schedule
+export function updateMaintenanceSchedule(stationId, scheduleId, data) {
+  return apiClient.patch('/api/stations/' + stationId + '/maintenance/' + scheduleId + '/', data)
+}
+
+// Delete a maintenance schedule
+export function deleteMaintenanceSchedule(stationId, scheduleId) {
+  return apiClient.delete('/api/stations/' + stationId + '/maintenance/' + scheduleId + '/')
+}
+
 // Batch fetch stations by multiple lat/lng points (for route corridor)
 export function getStationsBatch(points, radius) {
   return apiClient.post('/api/stations/batch/', { points: points, radius: radius || 20 })
