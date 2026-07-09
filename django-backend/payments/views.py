@@ -1,8 +1,7 @@
 import hashlib
 import hmac
-import json
 import logging
-from datetime import timedelta, timezone
+from datetime import timedelta
 
 import razorpay
 from django.conf import settings
@@ -11,8 +10,8 @@ from django.db.models import Q
 from django.utils import timezone as tz
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -174,7 +173,7 @@ class VerifyPaymentView(APIView):
             notification_type='PAYMENT',
             title='Payment Authorized',
             message=f'₹{payment.amount} authorized for booking #{booking.id}. Charge captured on completion.',
-            link=f'/bookings',
+            link='/bookings',
         )
 
         return Response(
@@ -213,7 +212,7 @@ class CapturePaymentView(APIView):
 
         try:
             client = _get_razorpay_client()
-            result = client.payment.capture(
+            client.payment.capture(
                 payment.razorpay_payment_id, amount, {'currency': 'INR'}
             )
         except Exception as e:
@@ -241,7 +240,7 @@ class CapturePaymentView(APIView):
             notification_type='PAYMENT',
             title='Payment Captured',
             message=f'₹{payment.amount} charged for charging at {booking.slot.station.name}.',
-            link=f'/bookings',
+            link='/bookings',
         )
 
         return Response(
