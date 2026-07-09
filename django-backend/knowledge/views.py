@@ -29,8 +29,6 @@ def search_documents(request):
         try:
             query_emb = json.loads(embedding_json)
             emb_str = ','.join(str(x) for x in query_emb)
-            dim = len(query_emb)
-
             with connection.cursor() as cursor:
                 cursor.execute(
                     f"""
