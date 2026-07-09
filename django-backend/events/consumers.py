@@ -1,8 +1,9 @@
 import json
 import logging
 from urllib.parse import parse_qs
-from channels.generic.websocket import AsyncWebsocketConsumer
+
 from channels.db import database_sync_to_async
+from channels.generic.websocket import AsyncWebsocketConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +62,9 @@ class UserEventConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _authenticate(self):
-        from rest_framework_simplejwt.tokens import AccessToken
-        from rest_framework_simplejwt.exceptions import TokenError
         from django.contrib.auth import get_user_model
+        from rest_framework_simplejwt.exceptions import TokenError
+        from rest_framework_simplejwt.tokens import AccessToken
 
         query_string = self.scope.get('query_string', b'').decode()
         params = parse_qs(query_string)
