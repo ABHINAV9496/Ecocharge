@@ -23,7 +23,7 @@ class ToolExecutor:
             logger.info('Result: %s', json.dumps(result, indent=2, default=str)[:2000])
             logger.info('--- END TOOL EXECUTOR ---')
             return result
-        except Exception as e:
+        except Exception:
             elapsed = time.monotonic() - start
             logger.exception('Tool %s raised an exception after %.2fs', tool.name, elapsed)
             logger.info('--- END TOOL EXECUTOR (EXCEPTION) ---')

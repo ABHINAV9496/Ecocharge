@@ -3,8 +3,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any
 
-from groq import AsyncGroq
-from groq import GroqError
+from groq import AsyncGroq, GroqError
 
 from config import settings
 from llm import LLMClient

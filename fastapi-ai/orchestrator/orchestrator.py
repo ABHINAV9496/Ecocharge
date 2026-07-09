@@ -1,14 +1,12 @@
 import logging
 from collections.abc import AsyncGenerator
 
-from config import settings
 from core.llm import GroqLLMClient
 from memory.memory_service import MemoryService
 from orchestrator.executor import Executor
 from orchestrator.planner import Planner
 from orchestrator.router import Router
 from orchestrator.verifier import Verifier
-from prompts.system_prompt import SYSTEM_PROMPT
 from rag.context_builder import RAGContextBuilder
 from rag.retriever import HybridRetriever
 from skills.registry import SkillRegistry

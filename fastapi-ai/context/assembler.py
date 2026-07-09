@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 from memory.memory_service import MemoryService
 from rag.context_builder import RAGContextBuilder

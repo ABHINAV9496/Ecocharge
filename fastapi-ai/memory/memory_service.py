@@ -3,10 +3,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from core.llm import GroqLLMClient
 from memory.memory_retriever import build_memory_context
 from memory.memory_store import MemoryStore
 from memory.memory_updater import MemoryUpdater
-from core.llm import GroqLLMClient
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,5 @@
 import json
 import logging
-from typing import Any
 
 from core.llm import GroqLLMClient
 from skills.registry import SkillRegistry
@@ -71,7 +70,6 @@ class Executor:
                         context += f'\n\n## {skill_name} Error\n\nFailed: {str(e)[:200]}'
 
             elif action == 'generate_response':
-                from schemas import ChatRequest
 
                 final_prompt = context or query
                 messages = list(conversation_history)

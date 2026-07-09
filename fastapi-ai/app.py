@@ -1,5 +1,4 @@
 import asyncio
-import logging
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +9,7 @@ from rag.pipeline import ingest_all_documents
 from routes.admin import router as admin_router
 from routes.chat import router as chat_router
 from routes.rag import router as rag_router
-from utils import setup_logging, get_logger
+from utils import get_logger, setup_logging
 
 setup_logging()
 logger = get_logger(__name__)

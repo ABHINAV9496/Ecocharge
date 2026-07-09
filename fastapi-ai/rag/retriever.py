@@ -2,7 +2,6 @@ import json
 import logging
 
 import httpx
-from sentence_transformers import SentenceTransformer
 
 from config import settings
 from rag.pipeline import get_embedding_model
