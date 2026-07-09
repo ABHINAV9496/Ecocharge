@@ -1,4 +1,5 @@
 import logging
+
 from events.helpers import send_user_event
 
 logger = logging.getLogger(__name__)

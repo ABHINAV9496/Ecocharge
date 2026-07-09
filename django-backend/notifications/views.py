@@ -1,8 +1,9 @@
-from rest_framework import status
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from .models import Notification
 from .serializers import NotificationSerializer
 
@@ -19,7 +20,7 @@ class NotificationListView(APIView):
         queryset = Notification.objects.filter(user=request.user)
 
         if unread_first:
-            from django.db.models import Case, BooleanField, Value, When
+            from django.db.models import BooleanField, Case, Value, When
             queryset = queryset.annotate(
                 is_read_order=Case(
                     When(is_read=False, then=Value(0)),
