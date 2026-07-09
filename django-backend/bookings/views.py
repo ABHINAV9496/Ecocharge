@@ -255,6 +255,10 @@ class BookingStartView(APIView):
             booking.status = 'IN_PROGRESS'
             booking.save()
 
+            slot = booking.slot
+            slot.status = 'OCCUPIED'
+            slot.save(update_fields=['status'])
+
         create_notification(
             user=request.user,
             notification_type='BOOKING',

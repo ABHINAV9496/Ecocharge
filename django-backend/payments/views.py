@@ -168,6 +168,10 @@ class VerifyPaymentView(APIView):
             booking.status = 'CONFIRMED'
             booking.save(update_fields=['status'])
 
+            slot = booking.slot
+            slot.status = 'OCCUPIED'
+            slot.save(update_fields=['status'])
+
         create_notification(
             user=request.user,
             notification_type='PAYMENT',
