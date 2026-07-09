@@ -1,5 +1,7 @@
 from rest_framework import serializers
+
 from .models import VehicleProfile
+
 
 class VehicleProfileSerializer(serializers.ModelSerializer):
     class Meta:

@@ -1,6 +1,5 @@
 from django.db import migrations, models
 
-
 DEFAULT_CHARGING_CURVE = [
     {'from_soc': 0, 'to_soc': 20, 'power_factor': 0.8},
     {'from_soc': 20, 'to_soc': 80, 'power_factor': 1.0},
