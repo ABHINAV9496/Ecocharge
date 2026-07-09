@@ -1,14 +1,16 @@
 import logging
-from rest_framework import status
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+
 from drf_spectacular.utils import extend_schema
-from .services import WeatherService, WeatherServiceError
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
 from .serializers import (
-    CurrentWeatherSerializer, ForecastSerializer,
-    CityWeatherSerializer, RouteWeatherSerializer,
+    CurrentWeatherSerializer,
+    RouteWeatherSerializer,
 )
+from .services import WeatherService, WeatherServiceError
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,11 @@
 from django.urls import path
+
 from .views import (
-    CurrentWeatherView, ForecastView, SevenDayForecastView,
-    CityWeatherView, RouteWeatherView,
+    CityWeatherView,
+    CurrentWeatherView,
+    ForecastView,
+    RouteWeatherView,
+    SevenDayForecastView,
 )
 
 urlpatterns = [
