@@ -106,7 +106,7 @@ class RealWeatherTool(BaseTool):
             if e.response.status_code == 502:
                 return None
             return None
-        except Exception as e:
+        except Exception:
             logger.exception('WeatherTool city API request failed')
             return None
 
@@ -121,7 +121,7 @@ class RealWeatherTool(BaseTool):
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get('hourly', [])
-        except Exception as e:
+        except Exception:
             logger.exception('WeatherTool forecast API request failed')
             return None
 
@@ -136,6 +136,6 @@ class RealWeatherTool(BaseTool):
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get('daily', [])
-        except Exception as e:
+        except Exception:
             logger.exception('WeatherTool 7-day API request failed')
             return None

@@ -226,7 +226,7 @@ class RealStationTool(BaseTool):
                 lat, lng = results[0]['latitude'], results[0]['longitude']
                 logger.info('StationTool geocode result: %.4f, %.4f', lat, lng)
                 return lat, lng
-        except Exception as e:
+        except Exception:
             logger.exception('StationTool geocode failed for %s', location)
             return None
 
@@ -247,7 +247,7 @@ class RealStationTool(BaseTool):
                     return data['results']
                 logger.warning('StationTool: unexpected response shape: %s', type(data).__name__)
                 return []
-        except Exception as e:
+        except Exception:
             logger.exception('StationTool list API failed')
             return None
 
@@ -262,7 +262,7 @@ class RealStationTool(BaseTool):
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get('stations', [])
-        except Exception as e:
+        except Exception:
             logger.exception('StationTool by-route API failed')
             return None
 

@@ -73,9 +73,6 @@ class RealTripTool(BaseTool):
         if not origin or not destination:
             return {'error': True, 'message': 'Both origin and destination are required.'}
 
-        strategy_map = {'fastest': 'fastest_time', 'cheapest': 'cheapest_cost'}
-        planner_strategy = strategy_map.get(strategy, 'fastest_time')
-
         logger.info('TripTool: geocoding origin=%s', origin)
         origin_coords = await self._geocode(origin)
         if not origin_coords:
@@ -100,7 +97,7 @@ class RealTripTool(BaseTool):
             return {
                 'error': True,
                 'message': (
-                    f"I couldn't determine your vehicle. "
+                    "I couldn't determine your vehicle. "
                     "Please tell me the exact make and model of your EV."
                 ),
             }
@@ -152,7 +149,7 @@ class RealTripTool(BaseTool):
                 lat, lng = results[0]['latitude'], results[0]['longitude']
                 logger.info('TripTool geocode result: %.4f, %.4f', lat, lng)
                 return [lat, lng]
-        except Exception as e:
+        except Exception:
             logger.exception('TripTool geocode failed for %s', location)
             return None
 
@@ -195,7 +192,7 @@ class RealTripTool(BaseTool):
 
             logger.info('TripTool OSRM result: %d points, %.2fkm, %.1fmin', len(coordinates), distance_m / 1000, duration_s / 60)
             return coordinates, distance_m, duration_s
-        except Exception as e:
+        except Exception:
             logger.exception('TripTool OSRM routing failed')
             return None
 
@@ -234,7 +231,7 @@ class RealTripTool(BaseTool):
 
             logger.warning('TripTool no vehicle match for "%s", returning first', query)
             return vehicles[0].get('id')
-        except Exception as e:
+        except Exception:
             logger.exception('TripTool vehicle lookup failed')
             return await self._fallback_vehicle_lookup(query_lower)
 
@@ -287,7 +284,7 @@ class RealTripTool(BaseTool):
         except httpx.TimeoutException:
             logger.exception('TripTool planner request timed out')
             return None
-        except Exception as e:
+        except Exception:
             logger.exception('TripTool planner request failed')
             return None
 

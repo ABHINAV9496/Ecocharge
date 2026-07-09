@@ -50,7 +50,7 @@ class RealBookingTool(BaseTool):
                 resp.raise_for_status()
                 data = resp.json()
                 return self._format_single(data)
-        except Exception as e:
+        except Exception:
             logger.exception('Booking detail API failed')
             return {'error': True, 'message': 'Could not retrieve booking details.'}
 
@@ -76,7 +76,7 @@ class RealBookingTool(BaseTool):
                     for b in data
                 ]
                 return {'bookings': bookings}
-        except Exception as e:
+        except Exception:
             logger.exception('Booking list API failed')
             return {'error': True, 'message': 'Could not retrieve bookings.'}
 
