@@ -2,19 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { FiChevronDown, FiBatteryCharging, FiSearch, FiPlus, FiTrash2 } from 'react-icons/fi'
 import { removeCustomVehicle } from '../../data/vehicleProfiles'
 import CustomVehicleForm from './CustomVehicleForm'
-
-var COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316']
-
-function VehicleBadge(props) {
-  var { make, model } = props
-  var initials = (make[0] + model[0]).toUpperCase()
-  var color = COLORS[make.length % COLORS.length]
-  return (
-    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: color }}>
-      <span className="text-white text-xs font-bold leading-none">{initials}</span>
-    </div>
-  )
-}
+import VehicleImage from '../vehicle/VehicleImage'
 
 export default function VehicleSelector(props) {
   var { vehicle, onSelect, vehicles } = props
@@ -70,7 +58,7 @@ export default function VehicleSelector(props) {
       >
         {vehicle ? (
           <>
-            <VehicleBadge make={vehicle.make} model={vehicle.model} />
+            <VehicleImage vehicle={vehicle} size="sm" />
             <div className="flex flex-col items-start">
               <span className="text-xs font-medium">{vehicle.make} {vehicle.model}</span>
               <span className="text-[10px] text-gray-400">{range} km range</span>
@@ -119,7 +107,7 @@ export default function VehicleSelector(props) {
                           (active ? 'bg-emerald-500/10 text-emerald-400' : 'text-gray-300 hover:bg-gray-800')
                         }
                       >
-                        <VehicleBadge make={v.make} model={v.model} />
+                        <VehicleImage vehicle={v} size="sm" />
                         <div className="flex flex-col items-start flex-1 min-w-0">
                           <span className="font-medium truncate">{v.make} {v.model}</span>
                           <span className="text-[10px] text-gray-500">
