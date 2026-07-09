@@ -1,9 +1,8 @@
 import { Link, useLocation } from 'react-router-dom'
-import { FiSun, FiMoon, FiLogOut, FiBatteryCharging, FiUser, FiMenu, FiX } from 'react-icons/fi'
+import { FiLogOut, FiBatteryCharging, FiUser, FiMenu, FiX } from 'react-icons/fi'
 import { useState } from 'react'
 import NotificationBell from '../notifications/NotificationBell'
 import { useAuth } from '../../context/AuthContext'
-import { useTheme } from '../../context/ThemeContext'
 import { logout as logoutApi } from '../../api/auth'
 
 var GUEST_LINKS = [
@@ -16,12 +15,12 @@ var GUEST_LINKS = [
 var APP_LINKS = [
   { label: 'Map', path: '/map' },
   { label: 'Trips', path: '/trips' },
+  { label: 'Vehicles', path: '/vehicles' },
   { label: 'Dashboard', path: '/dashboard' },
 ]
 
 export default function Navbar() {
   var { user, logoutUser } = useAuth()
-  var { dark, toggle: toggleTheme } = useTheme()
   var location = useLocation()
   var [mobileOpen, setMobileOpen] = useState(false)
 
@@ -67,14 +66,6 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-1">
-          <button
-            onClick={toggleTheme}
-            className="w-9 h-9 flex items-center justify-center rounded-lg text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {dark ? <FiSun className="w-4 h-4" /> : <FiMoon className="w-4 h-4" />}
-          </button>
-
           {user && <NotificationBell />}
 
           {user && (
