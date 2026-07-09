@@ -1,6 +1,8 @@
 from rest_framework import serializers
-from .models import Booking
+
 from stations.serializers import ChargingSlotSerializer
+
+from .models import Booking
 
 
 class BookingSerializer(serializers.ModelSerializer):

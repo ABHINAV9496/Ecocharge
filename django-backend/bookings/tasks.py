@@ -1,6 +1,7 @@
 from celery import shared_task
-from django.utils import timezone
 from django.db import transaction
+from django.utils import timezone
+
 from .models import Booking
 
 
@@ -26,8 +27,9 @@ def send_booking_confirmation(booking_id):
 
 @shared_task
 def auto_cancel_expired_bookings():
-    from notifications.helpers import create_notification
     from datetime import timedelta
+
+    from notifications.helpers import create_notification
 
     now = timezone.now()
     cutoff = now - timedelta(minutes=15)
@@ -50,7 +52,7 @@ def auto_cancel_expired_bookings():
             notification_type='BOOKING',
             title='Slot Released Automatically',
             message=f'Your booking at {booking.slot.station.name} has been completed and the slot is now available.',
-            link=f'/bookings',
+            link='/bookings',
         )
 
         processed_count += 1

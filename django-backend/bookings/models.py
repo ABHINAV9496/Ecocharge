@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class Booking(models.Model):
     class Status(models.TextChoices):
         PENDING = 'PENDING', 'Pending'

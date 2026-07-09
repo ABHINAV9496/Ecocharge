@@ -1,18 +1,18 @@
-from rest_framework import status
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.pagination import PageNumberPagination
 from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
-from .models import Booking
-from .serializers import BookingSerializer, CreateBookingSerializer
-from stations.models import ChargingSlot, ChargingStation
-from .tasks import send_booking_confirmation
-from notifications.helpers import create_notification
+from rest_framework import status
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
+from notifications.helpers import create_notification
+from stations.models import ChargingSlot, ChargingStation
+
+from .models import Booking
+from .serializers import BookingSerializer
 
 CHARGER_POWER_MAP = {
     'DC_ULTRA': 150.0,
@@ -25,7 +25,6 @@ def calc_booking_cost(slot, start_time, end_time):
     duration_hours = 1
     if end_time and start_time:
         try:
-            from datetime import datetime
             from dateutil import parser
             st = parser.parse(start_time) if isinstance(start_time, str) else start_time
             et = parser.parse(end_time) if isinstance(end_time, str) else end_time
@@ -135,7 +134,7 @@ class CreateBookingView(APIView):
             notification_type='BOOKING',
             title='Booking Created',
             message=f'Booking at {booking.slot.station.name} created. Complete payment to confirm.',
-            link=f'/bookings',
+            link='/bookings',
         )
 
         return Response(
@@ -227,7 +226,7 @@ class BookingDetailView(APIView):
             notification_type='BOOKING',
             title='Booking Cancelled',
             message=f'Your booking at {booking.slot.station.name} has been cancelled',
-            link=f'/bookings',
+            link='/bookings',
         )
 
         return Response(
@@ -261,7 +260,7 @@ class BookingStartView(APIView):
             notification_type='BOOKING',
             title='Charging Started',
             message=f'Charging started at {booking.slot.station.name}',
-            link=f'/bookings',
+            link='/bookings',
         )
 
         return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)
@@ -313,7 +312,7 @@ class BookingCompleteView(APIView):
             notification_type='BOOKING',
             title='Charging Completed',
             message=f'Charging completed at {booking.slot.station.name}. ₹{booking.amount_charged} charged.',
-            link=f'/bookings',
+            link='/bookings',
         )
 
         return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)
@@ -348,7 +347,7 @@ class BookingOwnerCompleteView(APIView):
             notification_type='BOOKING',
             title='Charging Force Completed',
             message=f'Your charging session at {booking.slot.station.name} was marked complete by the station owner.',
-            link=f'/bookings',
+            link='/bookings',
         )
 
         return Response(BookingSerializer(booking).data, status=status.HTTP_200_OK)
@@ -383,7 +382,7 @@ class BookingOwnerNoShowView(APIView):
             notification_type='BOOKING',
             title='Booking Marked No Show',
             message=f'Your booking at {booking.slot.station.name} was cancelled because you did not show up.',
-            link=f'/bookings',
+            link='/bookings',
         )
 
         return Response({'message': 'Booking marked as no show.'}, status=status.HTTP_200_OK)
