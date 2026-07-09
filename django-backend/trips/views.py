@@ -1,26 +1,28 @@
+import concurrent.futures
 import json
 import logging
 import time
-import concurrent.futures
-from rest_framework import generics, permissions, status
-from rest_framework.views import APIView
-from rest_framework.response import Response
+
+from django.contrib.gis.geos import Polygon
 from django.http import StreamingHttpResponse
 from django.shortcuts import get_object_or_404
-from django.contrib.gis.geos import Polygon
-from django.contrib.gis.db.models import Extent
-from .models import Trip
-from .serializers import (
-    TripSerializer,
-    TripPlanRequestSerializer,
-    TripPlanResponseSerializer,
-)
-from .services.route_planner import EnergyAwareRoutePlanner
-from vehicles.models import VehicleProfile
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from notifications.helpers import create_notification
 from stations.models import ChargingStation
 from users.permissions import IsDriver
-from notifications.helpers import create_notification
+from vehicles.models import VehicleProfile
 from weather.services import WeatherService, WeatherServiceError
+
+from .models import Trip
+from .serializers import (
+    TripPlanRequestSerializer,
+    TripPlanResponseSerializer,
+    TripSerializer,
+)
+from .services.route_planner import EnergyAwareRoutePlanner
 
 logger = logging.getLogger(__name__)
 

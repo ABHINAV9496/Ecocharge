@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class Trip(models.Model):
     driver = models.ForeignKey(
         'users.CustomUser', on_delete=models.CASCADE, related_name='trips'
