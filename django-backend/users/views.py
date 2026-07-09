@@ -1,18 +1,18 @@
-import uuid
-from rest_framework import status, generics
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.exceptions import TokenError
-from drf_spectacular.utils import extend_schema
 from django.conf import settings
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
-from django.contrib.auth.tokens import PasswordResetTokenGenerator
-from .serializers import RegisterSerializer, UserProfileSerializer
+from drf_spectacular.utils import extend_schema
+from rest_framework import generics, status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
+
 from .models import CustomUser
+from .serializers import RegisterSerializer, UserProfileSerializer
 
 
 @extend_schema(tags=['Authentication'])
@@ -149,8 +149,8 @@ class GoogleLoginView(APIView):
             )
 
         try:
-            from google.oauth2 import id_token as google_id_token
             from google.auth.transport import requests as google_requests
+            from google.oauth2 import id_token as google_id_token
             info = google_id_token.verify_oauth2_token(
                 token, google_requests.Request(), client_id
             )
@@ -167,7 +167,6 @@ class GoogleLoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        name = info.get('name', '')
         base_username = email.split('@')[0]
 
         try:
