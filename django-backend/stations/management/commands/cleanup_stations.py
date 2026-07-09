@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
-from stations.models import ChargingStation
+
 from stations.india_boundary import is_on_indian_landmass
+from stations.models import ChargingStation
 
 
 class Command(BaseCommand):

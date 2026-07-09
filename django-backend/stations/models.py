@@ -1,7 +1,7 @@
-from django.db import models
-from django.contrib.gis.db import models as gis_models
 from django.conf import settings
-from django.utils import timezone
+from django.contrib.gis.db import models as gis_models
+from django.db import models
+
 
 class ChargingStation(models.Model):
     class Status(models.TextChoices):

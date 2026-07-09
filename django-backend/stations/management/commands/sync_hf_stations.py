@@ -5,12 +5,11 @@ import random
 import urllib.request
 from collections import defaultdict
 
-from django.conf import settings
 from django.contrib.gis.geos import Point
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from stations.models import ChargingStation, ChargingSlot
+from stations.models import ChargingSlot, ChargingStation
 from users.models import CustomUser
 
 HF_URL = (
@@ -206,7 +205,7 @@ class Command(BaseCommand):
                     slot_count += len(batch)
                     batch = []
 
-            except (ValueError, TypeError) as e:
+            except (ValueError, TypeError):
                 skipped_error += 1
                 continue
 
@@ -223,7 +222,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  Skipped (duplicate):    {skipped_dup}")
         self.stdout.write(f"  Skipped (no coords):    {skipped_no_coords}")
         self.stdout.write(f"  Skipped (error):        {skipped_error}")
-        self.stdout.write(f"  Slot type breakdown:")
+        self.stdout.write("  Slot type breakdown:")
         for st, cnt in sorted(slot_type_counts.items(), key=lambda x: -x[1]):
             self.stdout.write(f"    {st}: {cnt}")
         total_kaggle = ChargingStation.objects.filter(source="KAGGLE").count()

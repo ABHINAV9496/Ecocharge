@@ -1,18 +1,19 @@
 import json
+import math
+import os
 import random
 import time
-import os
-import math
 from collections import defaultdict
-from urllib.request import urlopen, Request
 from urllib.error import HTTPError, URLError
-from django.core.management.base import BaseCommand, CommandError
-from django.contrib.gis.geos import Point
-from django.db import transaction
-from stations.models import ChargingStation, ChargingSlot
-from stations.india_boundary import is_on_indian_landmass
-from users.models import CustomUser
+from urllib.request import Request, urlopen
+
 from django.conf import settings
+from django.contrib.gis.geos import Point
+from django.core.management.base import BaseCommand, CommandError
+
+from stations.india_boundary import is_on_indian_landmass
+from stations.models import ChargingSlot, ChargingStation
+from users.models import CustomUser
 
 OCM_BASE_URL = 'https://api.openchargemap.io/v3/poi/'
 
@@ -331,7 +332,6 @@ class Command(BaseCommand):
                         station_obj = ChargingStation.objects.create(**station_data)
                         city_created += 1
 
-                    slot_type_counts_for_station = set()
                     existing_slot_types = set(
                         ChargingSlot.objects.filter(station=station_obj).values_list("slot_type", flat=True)
                     )
@@ -389,10 +389,10 @@ class Command(BaseCommand):
         self.stdout.write(f"  Skipped (no coords):    {total_skipped_dup}")
         self.stdout.write(f"  Skipped (out of bounds): {total_skipped_bounds}")
         self.stdout.write(f"  Slots created:          {total_ocm_slots}")
-        self.stdout.write(f"\n  Top cities:")
+        self.stdout.write("\n  Top cities:")
         for city, cnt in sorted(city_counts.items(), key=lambda x: -x[1])[:10]:
             self.stdout.write(f"    {city}: {cnt}")
-        self.stdout.write(f"\n  Slot type breakdown:")
+        self.stdout.write("\n  Slot type breakdown:")
         for st, cnt in sorted(slot_type_counts.items(), key=lambda x: -x[1]):
             self.stdout.write(f"    {st}: {cnt}")
         total_ocm = ChargingStation.objects.filter(source="OCM").count()

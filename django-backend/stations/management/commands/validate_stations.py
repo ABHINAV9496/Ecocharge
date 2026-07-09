@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
-from django.contrib.gis.geos import Point
-from stations.models import ChargingStation
+
 from stations.india_boundary import is_within_india
+from stations.models import ChargingStation
 from users.models import CustomUser
 
 

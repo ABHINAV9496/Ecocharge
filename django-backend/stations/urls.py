@@ -1,12 +1,20 @@
 from django.urls import path
+
 from .views import (
-    StationListView, StationDetailView,
-    SlotListView, SlotDetailView,
-    StationBatchView, StationByRouteView,
-    FavoriteStationToggleView, FavoriteStationListView,
-    StationReviewListCreateView, MyStationListView,
-    StationStatsView, OwnerStationRevenueView,
-    MaintenanceListCreateView, MaintenanceDetailView,
+    FavoriteStationListView,
+    FavoriteStationToggleView,
+    MaintenanceDetailView,
+    MaintenanceListCreateView,
+    MyStationListView,
+    OwnerStationRevenueView,
+    SlotDetailView,
+    SlotListView,
+    StationBatchView,
+    StationByRouteView,
+    StationDetailView,
+    StationListView,
+    StationReviewListCreateView,
+    StationStatsView,
 )
 
 urlpatterns = [

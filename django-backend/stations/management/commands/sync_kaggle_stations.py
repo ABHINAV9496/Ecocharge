@@ -1,16 +1,14 @@
 import csv
-import io
 import math
 import os
 import random
-import tempfile
 from collections import defaultdict
 
 from django.contrib.gis.geos import Point
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from stations.models import ChargingStation, ChargingSlot
+from stations.models import ChargingSlot, ChargingStation
 from users.models import CustomUser
 
 try:
@@ -289,7 +287,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  Skipped (duplicate):    {total_skipped_dup}")
         self.stdout.write(f"  Skipped (no coords):    {total_skipped_no_coords}")
         self.stdout.write(f"  Skipped (error):        {total_skipped_error}")
-        self.stdout.write(f"  Slot type breakdown:")
+        self.stdout.write("  Slot type breakdown:")
         for st, cnt in sorted(slot_type_counts.items(), key=lambda x: -x[1]):
             self.stdout.write(f"    {st}: {cnt}")
         total_kaggle = ChargingStation.objects.filter(source="KAGGLE").count()

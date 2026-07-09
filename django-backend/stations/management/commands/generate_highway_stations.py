@@ -5,10 +5,9 @@ from collections import defaultdict
 
 import requests
 from django.contrib.gis.geos import Point
-from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.core.management.base import BaseCommand
 
-from stations.models import ChargingStation, ChargingSlot
+from stations.models import ChargingSlot, ChargingStation
 from users.models import CustomUser
 
 OSRM_BASE = "https://router.project-osrm.org"
@@ -271,7 +270,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  Segments processed:     {total_segments}")
         self.stdout.write(f"  Stations created:       {total_created}")
         self.stdout.write(f"  Skipped (duplicate):    {total_skipped_dup}")
-        self.stdout.write(f"\n  By highway:")
+        self.stdout.write("\n  By highway:")
         for hwy, cnt in sorted(route_counts.items(), key=lambda x: -x[1]):
             self.stdout.write(f"    {hwy}: {cnt}")
         total_kaggle = ChargingStation.objects.filter(source="KAGGLE").count()

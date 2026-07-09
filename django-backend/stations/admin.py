@@ -1,5 +1,7 @@
 from django.contrib import admin
-from .models import ChargingStation, ChargingSlot
+
+from .models import ChargingSlot, ChargingStation
+
 
 @admin.register(ChargingStation)
 class ChargingStationAdmin(admin.ModelAdmin):

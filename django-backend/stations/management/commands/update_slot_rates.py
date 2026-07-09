@@ -1,6 +1,7 @@
 import random
+
 from django.core.management.base import BaseCommand
-from django.db import transaction
+
 from stations.models import ChargingSlot
 
 RATE_RANGES = {
