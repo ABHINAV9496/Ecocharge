@@ -18,8 +18,48 @@ export default function CustomVehicleForm(props) {
     setForm(function (prev) { return { ...prev, [field]: value } })
   }
 
+  var [errors, setErrors] = useState({})
+  var CURRENT_YEAR = new Date().getFullYear()
+
+  function validate() {
+    var e = {}
+    var make = form.make.trim()
+    var model = form.model.trim()
+
+    if (!make) e.make = 'Make is required'
+    else if (make.length > 50) e.make = 'Max 50 characters'
+    else if (!/^[A-Za-z\s.\-]+$/.test(make)) e.make = 'Only letters, spaces, hyphens and dots'
+
+    if (!model) e.model = 'Model is required'
+    else if (model.length > 50) e.model = 'Max 50 characters'
+    else if (!/^[A-Za-z0-9\s\-]+$/.test(model)) e.model = 'Only letters, numbers, spaces and hyphens'
+
+    var year = parseInt(form.year)
+    if (!year || isNaN(year)) e.year = 'Year is required'
+    else if (year < 2010 || year > CURRENT_YEAR + 1) e.year = 'Year must be 2010\u2013' + (CURRENT_YEAR + 1)
+
+    var bat = parseFloat(form.battery_kwh)
+    if (!bat || isNaN(bat)) e.battery_kwh = 'Battery capacity is required'
+    else if (bat < 5 || bat > 250) e.battery_kwh = 'Must be 5\u2013250 kWh'
+
+    var con = parseFloat(form.consumption_wh_per_km)
+    if (!con || isNaN(con)) e.consumption_wh_per_km = 'Consumption is required'
+    else if (con < 80 || con > 500) e.consumption_wh_per_km = 'Must be 80\u2013500 Wh/km'
+
+    var fc = parseFloat(form.fast_charge_kw)
+    if (fc && (fc < 0 || fc > 500)) e.fast_charge_kw = 'Must be 0\u2013500 kW'
+
+    var ac = parseFloat(form.ac_charge_kw)
+    if (ac && (ac < 0 || ac > 50)) e.ac_charge_kw = 'Must be 0\u201350 kW'
+
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
+    setErrors({})
+    if (!validate()) return
     var vehicle = {
       make: form.make.trim(),
       model: form.model.trim(),
@@ -29,7 +69,6 @@ export default function CustomVehicleForm(props) {
       fast_charge_kw: parseFloat(form.fast_charge_kw) || 0,
       ac_charge_kw: parseFloat(form.ac_charge_kw) || 0,
     }
-    if (!vehicle.make || !vehicle.model || !vehicle.battery_kwh || !vehicle.consumption_wh_per_km) return
     try {
       var saved = await addCustomVehicle(vehicle)
       onAdded(saved)
@@ -39,7 +78,9 @@ export default function CustomVehicleForm(props) {
     }
   }
 
-  var inputClass = 'w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-emerald-500 transition-colors'
+  function inputCls(field) {
+    return 'w-full bg-gray-800 border rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 outline-none focus:border-emerald-500 transition-colors ' + (errors[field] ? 'border-red-500' : 'border-gray-700')
+  }
 
   return (
     <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
@@ -55,39 +96,46 @@ export default function CustomVehicleForm(props) {
           <div className="flex gap-2">
             <div className="flex-1">
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1 block">Make</label>
-              <input type="text" placeholder="e.g. Tesla" value={form.make} onChange={function (e) { set('make', e.target.value) }} className={inputClass} required />
+              <input type="text" placeholder="e.g. Tesla" value={form.make} onChange={function (e) { set('make', e.target.value.replace(/[^A-Za-z\s.\-]/g, '')) }} className={inputCls('make')} maxLength="50" />
+              {errors.make && <p className="text-[10px] text-red-400 mt-0.5">{errors.make}</p>}
             </div>
             <div className="flex-1">
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1 block">Model</label>
-              <input type="text" placeholder="e.g. Model 3" value={form.model} onChange={function (e) { set('model', e.target.value) }} className={inputClass} required />
+              <input type="text" placeholder="e.g. Model 3" value={form.model} onChange={function (e) { set('model', e.target.value.replace(/[^A-Za-z0-9\s\-]/g, '')) }} className={inputCls('model')} maxLength="50" />
+              {errors.model && <p className="text-[10px] text-red-400 mt-0.5">{errors.model}</p>}
             </div>
           </div>
 
           <div className="flex gap-2">
             <div className="flex-1">
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1 block">Year</label>
-              <input type="number" value={form.year} onChange={function (e) { set('year', e.target.value) }} className={inputClass} />
+              <input type="number" value={form.year} onChange={function (e) { set('year', e.target.value) }} className={inputCls('year')} min="2010" max="2027" />
+              {errors.year && <p className="text-[10px] text-red-400 mt-0.5">{errors.year}</p>}
             </div>
             <div className="flex-1">
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1 block">Battery (kWh)</label>
-              <input type="number" step="0.1" placeholder="e.g. 75" value={form.battery_kwh} onChange={function (e) { set('battery_kwh', e.target.value) }} className={inputClass} required />
+              <input type="number" step="0.1" placeholder="e.g. 75" value={form.battery_kwh} onChange={function (e) { set('battery_kwh', e.target.value) }} className={inputCls('battery_kwh')} min="5" max="250" />
+              {errors.battery_kwh && <p className="text-[10px] text-red-400 mt-0.5">{errors.battery_kwh}</p>}
             </div>
           </div>
 
           <div className="flex gap-2">
             <div className="flex-1">
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1 block">Consumption (Wh/km)</label>
-              <input type="number" placeholder="e.g. 180" value={form.consumption_wh_per_km} onChange={function (e) { set('consumption_wh_per_km', e.target.value) }} className={inputClass} required />
+              <input type="number" placeholder="e.g. 180" value={form.consumption_wh_per_km} onChange={function (e) { set('consumption_wh_per_km', e.target.value) }} className={inputCls('consumption_wh_per_km')} min="80" max="500" />
+              {errors.consumption_wh_per_km && <p className="text-[10px] text-red-400 mt-0.5">{errors.consumption_wh_per_km}</p>}
             </div>
             <div className="flex-1">
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1 block">Fast Charge (kW)</label>
-              <input type="number" placeholder="e.g. 50" value={form.fast_charge_kw} onChange={function (e) { set('fast_charge_kw', e.target.value) }} className={inputClass} />
+              <input type="number" placeholder="e.g. 50" value={form.fast_charge_kw} onChange={function (e) { set('fast_charge_kw', e.target.value) }} className={inputCls('fast_charge_kw')} min="0" max="500" />
+              {errors.fast_charge_kw && <p className="text-[10px] text-red-400 mt-0.5">{errors.fast_charge_kw}</p>}
             </div>
           </div>
 
           <div>
             <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1 block">AC Charge (kW)</label>
-            <input type="number" step="0.1" placeholder="e.g. 7.4" value={form.ac_charge_kw} onChange={function (e) { set('ac_charge_kw', e.target.value) }} className={inputClass} />
+            <input type="number" step="0.1" placeholder="e.g. 7.4" value={form.ac_charge_kw} onChange={function (e) { set('ac_charge_kw', e.target.value) }} className={inputCls('ac_charge_kw')} min="0" max="50" />
+            {errors.ac_charge_kw && <p className="text-[10px] text-red-400 mt-0.5">{errors.ac_charge_kw}</p>}
           </div>
 
           <button

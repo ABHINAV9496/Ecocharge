@@ -10,7 +10,14 @@ export function VehicleProvider({ children }) {
   useEffect(function () {
     getAllVehicles().then(function (list) {
       setVehicles(list)
-      var defaultV = list.find(function (v) { return v.id === DEFAULT_VEHICLE_ID }) || list[0]
+      var preferredId = localStorage.getItem('preferred_vehicle_id')
+      var defaultV
+      if (preferredId) {
+        defaultV = list.find(function (v) { return v.id === preferredId })
+      }
+      if (!defaultV) {
+        defaultV = list.find(function (v) { return v.id === DEFAULT_VEHICLE_ID }) || list[0]
+      }
       setVehicle(defaultV)
     }).catch(function () {
       setVehicles([])
