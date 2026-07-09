@@ -43,14 +43,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.gis',       
-    'django_celery_beat', 
-    'rest_framework',  
+    'django.contrib.gis',
+    'django_celery_beat',
+    'rest_framework',
     'drf_spectacular',
-    'rest_framework_gis',          
-    'corsheaders',               
-    'channels',     
-    'rest_framework_simplejwt.token_blacklist',             
+    'rest_framework_gis',
+    'corsheaders',
+    'channels',
+    'rest_framework_simplejwt.token_blacklist',
     'users',
     'stations',
     'knowledge',
@@ -65,7 +65,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware', 
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -106,7 +106,7 @@ DATABASES = {
         'NAME': 'ecocharge',
         'USER': 'ecouser',
         'PASSWORD': 'ecopass',
-        'HOST': 'postgres',
+        'HOST': env('DATABASE_HOST', default='postgres'),
         'PORT': '5432',
     }
 }

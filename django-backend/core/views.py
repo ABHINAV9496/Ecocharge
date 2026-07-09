@@ -1,9 +1,10 @@
 import time
+
 import requests
+from drf_spectacular.utils import extend_schema
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
-from drf_spectacular.utils import extend_schema
 
 _cache = {}
 _CACHE_TTL = 3600
