@@ -10,15 +10,15 @@ Algorithm:
   5. After all stops, call OSRM route endpoint for display geometry.
 """
 
-from dataclasses import dataclass, field
-from typing import List
+import logging
 import math
 import threading
 import time
-import logging
+from dataclasses import dataclass, field
+from typing import List
+
 import requests
 from django.core.cache import cache
-
 
 logger = logging.getLogger(__name__)
 
