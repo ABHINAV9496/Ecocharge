@@ -1,0 +1,28 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/migrations/*.py" = ["E501"]
+"bookings/views.py" = ["E501"]
+"core/settings.py" = ["E402"]
+"payments/views.py" = ["E501"]
+"stations/serializers.py" = ["E501"]
+"stations/views.py" = ["E501"]
+"stations/india_boundary.py" = ["E402"]
+"trips/serializers.py" = ["E501"]
+"trips/services/route_planner.py" = ["E501", "E741"]
+"users/serializers.py" = ["E501"]
+"users/views.py" = ["E501"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "core.test_settings"
+python_files = ["test_*.py", "*_tests.py"]
+testpaths = ["."]
+addopts = ["--import-mode=importlib"]
