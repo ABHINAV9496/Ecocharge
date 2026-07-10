@@ -9,6 +9,7 @@ import { getStations } from '../../api/stations'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { useVehicle } from '../../context/VehicleContext'
+import { useStationSocket } from '../../context/StationSocketContext'
 import { formatDistance, formatDuration } from '../../utils/formatters'
 import MapSearchBar from './MapSearchBar'
 import 'leaflet/dist/leaflet.css'
@@ -122,6 +123,29 @@ export default function MapView({ routePlan }) {
   var initialLoadDone = useRef(null)
   var stationCache = useRef({})
   var bp = routePlan ? routePlan.backendPlan : null
+  var { connected: stationConnected, subscribe: subscribeStations, onStationUpdate } = useStationSocket()
+
+  useEffect(function () {
+    if (!stationConnected) return
+
+    onStationUpdate(function (updatedStation) {
+      setStations(function (prev) {
+        var idx = prev.findIndex(function (s) { return s.id === updatedStation.id })
+        if (idx === -1) return prev
+        var next = prev.slice()
+        next[idx] = updatedStation
+        return next
+      })
+    })
+
+    return function () { onStationUpdate(null) }
+  }, [stationConnected, onStationUpdate])
+
+  useEffect(function () {
+    if (!stationConnected) return
+    var ids = stations.map(function (s) { return s.id })
+    if (ids.length > 0) subscribeStations(ids)
+  }, [stationConnected, subscribeStations, stations.length])
 
   function getBoundsCell(bounds) {
     if (!bounds) return null

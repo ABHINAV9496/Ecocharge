@@ -34,7 +34,7 @@ export default function VehicleImage(props) {
     <img
       src={'/vehicles/' + vehicle.id + '.png'}
       alt={vehicle.make + ' ' + vehicle.model}
-      className={dims.box + ' object-contain rounded-lg shrink-0 bg-gray-800 ' + (className || '')}
+      className={dims.box + ' object-contain rounded-lg shrink-0 ' + (className || '')}
       onError={function () { setFailed(true) }}
       loading="lazy"
     />

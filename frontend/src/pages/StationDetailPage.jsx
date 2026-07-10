@@ -6,6 +6,7 @@ import { createBooking } from '../api/bookings'
 import { createPaymentOrder, verifyPayment } from '../api/payments'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import { useStationSocket } from '../context/StationSocketContext'
 import { getSlotTypeColor, SLOT_TYPE_LABELS } from '../utils/formatters'
 import { SkeletonList } from '../components/layout/Skeleton'
 import Navbar from '../components/layout/Navbar'
@@ -144,6 +145,22 @@ export default function StationDetailPage() {
     }
     setBooking(null)
   }
+
+  var { connected: stationConnected, subscribe: subscribeStations, onStationUpdate } = useStationSocket()
+
+  useEffect(function () {
+    if (!stationConnected) return
+
+    subscribeStations([Number(id)])
+
+    onStationUpdate(function (updatedStation) {
+      if (updatedStation.id === Number(id)) {
+        setSlots(updatedStation.slots || [])
+      }
+    })
+
+    return function () { onStationUpdate(null) }
+  }, [id, stationConnected, subscribeStations, onStationUpdate])
 
   var availableCount = slots.filter(function (s) { return s.status === 'AVAILABLE' }).length
   var slotGroups = {}

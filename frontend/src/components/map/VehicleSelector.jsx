@@ -5,7 +5,7 @@ import CustomVehicleForm from './CustomVehicleForm'
 import VehicleImage from '../vehicle/VehicleImage'
 
 export default function VehicleSelector(props) {
-  var { vehicle, onSelect, vehicles } = props
+  var { vehicle, onSelect, vehicles, variant } = props
   var [open, setOpen] = useState(false)
   var [search, setSearch] = useState('')
   var [showForm, setShowForm] = useState(false)
@@ -52,23 +52,69 @@ export default function VehicleSelector(props) {
 
   return (
     <div ref={panelRef} className="relative">
-      <button
-        onClick={function () { setOpen(!open) }}
-        className="flex items-center gap-2 px-3 py-2 bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-xl text-sm text-white hover:bg-gray-800 transition-colors shadow-lg"
-      >
-        {vehicle ? (
-          <>
-            <VehicleImage vehicle={vehicle} size="sm" />
-            <div className="flex flex-col items-start">
-              <span className="text-xs font-medium">{vehicle.make} {vehicle.model}</span>
-              <span className="text-[10px] text-gray-400">{range} km range</span>
+      {variant === 'card' ? (
+        <div className="bg-gray-800/80 backdrop-blur-sm border border-gray-700 rounded-xl p-4 shadow-lg">
+          <div className="flex items-center gap-4 mb-3">
+            <VehicleImage vehicle={vehicle} size="lg" />
+            <div className="min-w-0 flex-1">
+              {vehicle ? (
+                <>
+                  <h3 className="text-base font-bold text-white truncate">{vehicle.make} {vehicle.model}</h3>
+                  <p className="text-xs text-gray-400">{vehicle.year} · {vehicle.battery_kwh} kWh</p>
+                </>
+              ) : (
+                <span className="text-xs text-gray-400">Loading vehicles...</span>
+              )}
             </div>
-          </>
-        ) : (
-          <span className="text-xs text-gray-400">Loading vehicles...</span>
-        )}
-        <FiChevronDown className="w-3.5 h-3.5 text-gray-400 ml-1" />
-      </button>
+          </div>
+          {vehicle && (
+            <>
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="flex flex-col items-center p-2 bg-gray-900/60 rounded-lg">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wider">Range</span>
+                  <span className="text-sm font-bold text-emerald-400">{range} km</span>
+                </div>
+                <div className="flex flex-col items-center p-2 bg-gray-900/60 rounded-lg">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wider">DC</span>
+                  <span className="text-sm font-bold text-amber-400">{vehicle.fast_charge_kw} kW</span>
+                </div>
+                <div className="flex flex-col items-center p-2 bg-gray-900/60 rounded-lg">
+                  <span className="text-[10px] text-gray-500 uppercase tracking-wider">AC</span>
+                  <span className="text-sm font-bold text-blue-400">{vehicle.ac_charge_kw} kW</span>
+                </div>
+              </div>
+              <div className="text-[11px] text-gray-500 mb-3 flex items-center gap-3">
+                <span>{vehicle.consumption_wh_per_km} Wh/km</span>
+              </div>
+            </>
+          )}
+          <button
+            onClick={function () { setOpen(!open) }}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-gray-900/80 border border-gray-600 rounded-xl text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+          >
+            Change Vehicle
+            <FiChevronDown className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={function () { setOpen(!open) }}
+          className="flex items-center gap-2 px-3 py-2 bg-gray-900/90 backdrop-blur-md border border-gray-700 rounded-xl text-sm text-white hover:bg-gray-800 transition-colors shadow-lg"
+        >
+          {vehicle ? (
+            <>
+              <VehicleImage vehicle={vehicle} size="sm" />
+              <div className="flex flex-col items-start">
+                <span className="text-xs font-medium">{vehicle.make} {vehicle.model}</span>
+                <span className="text-[10px] text-gray-400">{range} km range</span>
+              </div>
+            </>
+          ) : (
+            <span className="text-xs text-gray-400">Loading vehicles...</span>
+          )}
+          <FiChevronDown className="w-3.5 h-3.5 text-gray-400 ml-1" />
+        </button>
+      )}
 
       {open && (
         <div className="absolute top-full left-0 mt-1 w-72 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-[2000] max-h-96 overflow-y-auto">

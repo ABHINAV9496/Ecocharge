@@ -426,7 +426,7 @@ export default function TripPlanner() {
           {/* Vehicle selector */}
           <div>
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Vehicle</label>
-            <VehicleSelector vehicle={vehicle} onSelect={setVehicle} vehicles={vehicles} />
+            <VehicleSelector variant="card" vehicle={vehicle} onSelect={setVehicle} vehicles={vehicles} />
           </div>
 
           <div>

@@ -15,7 +15,6 @@ var GUEST_LINKS = [
 var APP_LINKS = [
   { label: 'Map', path: '/map' },
   { label: 'Trips', path: '/trips' },
-  { label: 'Vehicles', path: '/vehicles' },
   { label: 'Dashboard', path: '/dashboard' },
 ]
 
