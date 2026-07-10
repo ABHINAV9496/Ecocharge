@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { FiUsers, FiMapPin, FiCalendar, FiDollarSign, FiTrendingUp, FiRefreshCw, FiChevronLeft, FiChevronRight, FiSearch } from 'react-icons/fi'
 import { getStations, getStationStats, getOwnerRevenue } from '../../api/stations'
 import { getBookings } from '../../api/bookings'
-import { formatCurrency, formatDate } from '../../utils/formatters'
+import { formatCurrency, formatDate, shortPlace } from '../../utils/formatters'
 import { SkeletonStats, SkeletonTable } from '../layout/Skeleton'
 import { LineChart, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import NotificationBell from './NotificationBell'
@@ -279,7 +279,7 @@ export default function SuperAdminDashboard() {
                 return (
                   <div key={station.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-xl">
                     <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{station.name}</p>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{station.name}{station.address ? ' · ' + shortPlace(station.address) : ''}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Owner: {station.owner_username || 'N/A'}</p>
                       {totalSlots > 0 && (
                         <div className="flex items-center gap-1 mt-0.5">

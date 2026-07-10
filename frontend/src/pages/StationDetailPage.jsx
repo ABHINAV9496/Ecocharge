@@ -1,15 +1,31 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { FiArrowLeft, FiBatteryCharging, FiDollarSign, FiClock, FiHeart, FiStar, FiX } from 'react-icons/fi'
+import { FiArrowLeft, FiBatteryCharging, FiDollarSign, FiClock, FiHeart, FiStar, FiX, FiZap } from 'react-icons/fi'
 import { getStation, toggleFavorite, getReviews, createReview } from '../api/stations'
 import { createBooking } from '../api/bookings'
 import { createPaymentOrder, verifyPayment } from '../api/payments'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
+import { useVehicle } from '../context/VehicleContext'
 import { useStationSocket } from '../context/StationSocketContext'
-import { getSlotTypeColor, SLOT_TYPE_LABELS } from '../utils/formatters'
+import { getSlotTypeColor, SLOT_TYPE_LABELS, shortPlace } from '../utils/formatters'
 import { SkeletonList } from '../components/layout/Skeleton'
 import Navbar from '../components/layout/Navbar'
+
+var CHARGER_POWER_MAP = {
+  DC_ULTRA: 150.0,
+  DC_FAST: 50.0,
+  AC_FAST: 7.4,
+  AC_SLOW: 3.3,
+}
+
+var DURATION_OPTIONS = [
+  { label: '30m', hours: 0.5 },
+  { label: '1h', hours: 1 },
+  { label: '2h', hours: 2 },
+  { label: '3h', hours: 3 },
+  { label: '4h', hours: 4 },
+]
 
 function loadRazorpayScript() {
   return new Promise(function (resolve, reject) {
@@ -22,11 +38,25 @@ function loadRazorpayScript() {
   })
 }
 
+function estimateCost(slot, vehicle, durationHours) {
+  if (!slot) return 0
+  var nominalPower = CHARGER_POWER_MAP[slot.slot_type] || 7.4
+  var powerKw = nominalPower
+  if (vehicle) {
+    var isDc = slot.slot_type === 'DC_FAST' || slot.slot_type === 'DC_ULTRA'
+    var vehiclePower = isDc ? vehicle.fast_charge_kw : vehicle.ac_charge_kw
+    if (vehiclePower) powerKw = Math.min(vehiclePower, nominalPower)
+  }
+  var estimatedKwh = durationHours * powerKw
+  return Math.round(estimatedKwh * parseFloat(slot.rate_per_kwh) * 100) / 100
+}
+
 export default function StationDetailPage() {
   var { id } = useParams()
   var navigate = useNavigate()
   var { user } = useAuth()
   var showToast = useToast()
+  var { vehicles, vehicle: preferredVehicle } = useVehicle()
 
   var [station, setStation] = useState(null)
   var [slots, setSlots] = useState([])
@@ -38,6 +68,33 @@ export default function StationDetailPage() {
   var [reviews, setReviews] = useState([])
   var [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' })
   var [submittingReview, setSubmittingReview] = useState(false)
+
+  var [selectedVehicleId, setSelectedVehicleId] = useState('')
+  var [durationHours, setDurationHours] = useState(1)
+
+  function defaultDate() {
+    return new Date().toISOString().slice(0, 10)
+  }
+
+  function defaultTime() {
+    var d = new Date()
+    d.setHours(d.getHours() + 1, 0, 0, 0)
+    return d.toISOString().slice(11, 16)
+  }
+
+  var [bookingDate, setBookingDate] = useState(defaultDate())
+  var [bookingTime, setBookingTime] = useState(defaultTime())
+
+  useEffect(function () {
+    if (preferredVehicle) {
+      setSelectedVehicleId(preferredVehicle.id)
+    }
+  }, [preferredVehicle])
+
+  var selectedVehicle = useMemo(function () {
+    if (!selectedVehicleId) return null
+    return vehicles.find(function (v) { return v.id === selectedVehicleId }) || null
+  }, [selectedVehicleId, vehicles])
 
   useEffect(function () {
     async function load() {
@@ -86,11 +143,19 @@ export default function StationDetailPage() {
   async function handleBook(slot) {
     if (!user) { setBookingError('Please login to book'); return }
     if (user.role !== 'DRIVER') { setBookingError('Only drivers can book charging slots'); return }
+    if (!selectedVehicle) { setBookingError('Please select a vehicle'); return }
     setBookingError('')
     setBooking(slot.id)
     try {
-      var now = new Date()
-      var bookingRes = await createBooking({ slot: slot.id, start_time: now.toISOString(), end_time: new Date(now.getTime() + 60 * 60 * 1000).toISOString() })
+      var startTime = new Date(bookingDate + 'T' + bookingTime)
+      if (isNaN(startTime.getTime())) { setBookingError('Invalid date or time'); setBooking(null); return }
+      var endTime = new Date(startTime.getTime() + durationHours * 60 * 60 * 1000)
+      var bookingRes = await createBooking({
+        slot: slot.id,
+        vehicle_id: selectedVehicle.id,
+        start_time: startTime.toISOString(),
+        end_time: endTime.toISOString(),
+      })
       var bookingId = bookingRes.data.id
       var amount = bookingRes.data.amount_charged
 
@@ -104,7 +169,7 @@ export default function StationDetailPage() {
         amount: order.amount,
         currency: order.currency,
         name: 'EcoCharge',
-        description: 'Booking at ' + station.name,
+        description: ((durationHours >= 1 ? durationHours + 'h' : (durationHours * 60) + 'm') + ' · ') + selectedVehicle.make + ' ' + selectedVehicle.model + ' · ' + bookingDate + ' ' + bookingTime + ' · ' + station.name + (station.address ? ', ' + shortPlace(station.address) : ''),
         order_id: order.order_id,
         handler: async function (response) {
           try {
@@ -114,7 +179,7 @@ export default function StationDetailPage() {
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
             })
-            showToast('Payment successful! Booking confirmed at ' + station.name + '!', 'success')
+            showToast('Booking confirmed at ' + station.name + (station.address ? ', ' + shortPlace(station.address) : '') + '!', 'success')
             var res = await getStation(id)
             setSlots(res.data.slots || [])
           } catch (verifyErr) {
@@ -190,8 +255,8 @@ export default function StationDetailPage() {
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
               <div className="flex items-start justify-between">
                 <div>
-                  <h1 className="text-xl font-bold text-gray-900 dark:text-white">{station.name}</h1>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{station.address}</p>
+                  <h1 className="text-xl font-bold text-gray-900 dark:text-white">{station.name}{station.address ? ' · ' + shortPlace(station.address) : ''}</h1>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{shortPlace(station.address)}</p>
                   <div className="flex items-center gap-2 mt-2">
                     <span className={'px-2.5 py-0.5 text-xs font-medium rounded-full ' + (station.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-200')}>{station.status === 'ACTIVE' ? 'Active' : station.status === 'MAINTENANCE' ? 'Maintenance' : 'Offline'}</span>
                     <span className="flex items-center gap-1 text-xs text-gray-500"><FiBatteryCharging className="w-3.5 h-3.5 text-emerald-500" /> {availableCount}/{slots.length} Available</span>
@@ -216,8 +281,60 @@ export default function StationDetailPage() {
 
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Charging Slots</h2>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Book a Slot</h2>
                 <span className="text-xs text-gray-500">{availableCount} open / {slots.length} total</span>
+              </div>
+
+              {/* Booking options: vehicle + duration + date/time */}
+              <div className="mb-5 p-4 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Your Vehicle</label>
+                    <select value={selectedVehicleId} onChange={function (e) { setSelectedVehicleId(e.target.value) }}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                    >
+                      <option value="">Select a vehicle</option>
+                      {vehicles.map(function (v) {
+                        return <option key={v.id} value={v.id}>{v.make} {v.model} ({v.year})</option>
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Duration</label>
+                    <div className="flex gap-1.5">
+                      {DURATION_OPTIONS.map(function (opt) {
+                        return (
+                          <button key={opt.hours} onClick={function () { setDurationHours(opt.hours) }}
+                            className={'flex-1 py-2 text-xs font-medium rounded-lg border transition-all ' + (durationHours === opt.hours
+                              ? 'bg-emerald-500 text-white border-emerald-500'
+                              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:border-emerald-400')}
+                          >{opt.label}</button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Date</label>
+                    <input type="date" value={bookingDate} onChange={function (e) { setBookingDate(e.target.value) }} min={defaultDate()}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Time</label>
+                    <input type="time" value={bookingTime} onChange={function (e) { setBookingTime(e.target.value) }}
+                      className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+                    />
+                  </div>
+                </div>
+                {selectedVehicle && (
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                    <span className="flex items-center gap-1"><FiZap className="w-3 h-3 text-emerald-500" /> DC: {selectedVehicle.fast_charge_kw} kW</span>
+                    <span className="flex items-center gap-1"><FiBatteryCharging className="w-3 h-3 text-blue-500" /> AC: {selectedVehicle.ac_charge_kw} kW</span>
+                    <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium"><FiClock className="w-3 h-3" /> {bookingDate} at {bookingTime}</span>
+                  </div>
+                )}
               </div>
 
               {bookingError && (
@@ -240,6 +357,7 @@ export default function StationDetailPage() {
                           {groupSlots.map(function (slot) {
                             var statusColor = { AVAILABLE: 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-900/20', OCCUPIED: 'border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20', OUT_OF_SERVICE: 'border-red-200 dark:border-red-800 bg-red-50/80 dark:bg-red-900/20' }[slot.status] || 'border-gray-200 dark:border-gray-700'
                             var statusBadge = { AVAILABLE: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400', OCCUPIED: 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400', OUT_OF_SERVICE: 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400' }[slot.status] || 'bg-gray-100 dark:bg-gray-700 text-gray-500'
+                            var estCost = estimateCost(slot, selectedVehicle, durationHours)
                             return (
                               <div key={slot.id} className={'p-3.5 border rounded-xl transition-all ' + statusColor}>
                                 <div className="flex items-center justify-between mb-2">
@@ -252,6 +370,9 @@ export default function StationDetailPage() {
                                   <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
                                     <span className="flex items-center gap-1"><FiDollarSign className="w-3 h-3" /> ₹{slot.rate_per_kwh}/kWh</span>
                                     {slot.off_peak_rate && <span className="flex items-center gap-1"><FiClock className="w-3 h-3" /> Off: ₹{slot.off_peak_rate}</span>}
+                                    {slot.status === 'AVAILABLE' && selectedVehicle && (
+                                      <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium"><FiZap className="w-3 h-3" /> Est. ₹{estCost}</span>
+                                    )}
                                   </div>
                                   {slot.status === 'AVAILABLE' && user && (
                                     <button onClick={function () { handleBook(slot) }} disabled={booking === slot.id}

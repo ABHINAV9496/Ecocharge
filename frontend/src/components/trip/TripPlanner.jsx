@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { useVehicle } from '../../context/VehicleContext'
 import { searchLocations } from '../../api/geocode'
-import { formatCurrency, formatDuration, chargerLabel } from '../../utils/formatters'
+import { formatCurrency, formatDuration, chargerLabel, shortPlace } from '../../utils/formatters'
 import VehicleSelector from '../map/VehicleSelector'
 import TripTimeline from './TripTimeline'
 import RouteWeatherTimeline from '../weather/RouteWeatherTimeline'
@@ -43,6 +43,48 @@ export default function TripPlanner() {
   var [stopPage, setStopPage] = useState(1)
   var [stopSort, setStopSort] = useState('order')
   var [comparing, setComparing] = useState(false)
+  var quickCompareCachePrefix = 'qc_'
+  var quickCompareTTL = 24 * 60 * 60 * 1000
+  var autoComparedRef = useRef(false)
+
+  function qcCacheKey() {
+    if (!originCoords || !destCoords || !vehicle) return null
+    var raw = originCoords.lat + '_' + originCoords.lng + '_' + destCoords.lat + '_' + destCoords.lng + '_' + vehicle.id + '_' + batteryPercent
+    var hash = 0
+    for (var i = 0; i < raw.length; i++) { hash = ((hash << 5) - hash) + raw.charCodeAt(i); hash |= 0 }
+    return quickCompareCachePrefix + hash
+  }
+
+  function qcLoadFromCache() {
+    try {
+      var key = qcCacheKey()
+      if (!key) return null
+      var raw = localStorage.getItem(key)
+      if (!raw) return null
+      var data = JSON.parse(raw)
+      if (Date.now() - data.ts > quickCompareTTL) { localStorage.removeItem(key); return null }
+      return data.results
+    } catch (e) { return null }
+  }
+
+  function qcSaveToCache(results) {
+    try {
+      var key = qcCacheKey()
+      if (!key) return
+      localStorage.setItem(key, JSON.stringify({ results: results, ts: Date.now() }))
+    } catch (e) { /* storage full */ }
+  }
+
+  // Auto-trigger quick compare when all inputs are complete
+  useEffect(function () {
+    if (originCoords && destCoords && vehicle && !autoComparedRef.current) {
+      autoComparedRef.current = true
+      handleQuickCompare()
+    }
+    if (!originCoords || !destCoords || !vehicle) {
+      autoComparedRef.current = false
+    }
+  }, [originCoords, destCoords, vehicle, batteryPercent])
 
   async function geocode(query, type) {
     if (!query.trim()) {
@@ -154,6 +196,15 @@ export default function TripPlanner() {
   async function handleQuickCompare() {
     if (!originCoords || !destCoords || !vehicle) return
     setComparing(true); setError('')
+
+    // Check cache
+    var cached = qcLoadFromCache()
+    if (cached) {
+      setComparison(cached)
+      setComparing(false)
+      return
+    }
+
     var types = ['all', 'dc', 'ac']
     var results = {}
     try {
@@ -198,6 +249,7 @@ export default function TripPlanner() {
         }
       }))
       setComparison(results)
+      qcSaveToCache(results)
     } catch (e) { console.error(e); setError('Quick compare failed.') }
     setComparing(false)
   }
@@ -250,6 +302,9 @@ export default function TripPlanner() {
           stop_index: s.stop_index,
           station_id: s.station_id,
           station_name: s.station_name,
+          address: s.address,
+          projected_lat: s.projected_lat,
+          projected_lng: s.projected_lng,
           lat: s.lat,
           lng: s.lng,
           arrival_soc_percent: s.arrival_soc_percent,
@@ -280,6 +335,7 @@ export default function TripPlanner() {
         stops: stopData,
       })
       setSaved(true)
+      showToast('Trip saved successfully', 'success')
     } catch (e) { console.error('Save trip error:', e); setError('Failed to save trip.') }
     setSaving(false)
   }
@@ -303,6 +359,9 @@ export default function TripPlanner() {
           stop_index: s.stop_index,
           station_id: s.station_id,
           station_name: s.station_name,
+          address: s.address,
+          projected_lat: s.projected_lat,
+          projected_lng: s.projected_lng,
           lat: s.lat,
           lng: s.lng,
           arrival_soc_percent: s.arrival_soc_percent,
@@ -336,6 +395,7 @@ export default function TripPlanner() {
         waypointGeometry: (bp && bp.waypoint_geometry && bp.waypoint_geometry.length > 10)
           ? bp.waypoint_geometry : null
       })
+      showToast('Trip confirmed — navigating to map', 'success')
       navigate('/map', { state: { routePlan: enhancedRoute } })
     } catch (e) { console.error('Save trip error:', e); setError('Failed to save trip.') }
     setConfirming(false)
@@ -494,7 +554,7 @@ export default function TripPlanner() {
                   var stopLabel = d.stops !== '-' ? d.stops + ' stop' + (d.stops !== 1 ? 's' : '') : '\u2014'
                   return (
                     <button key={t} type="button"
-                      onClick={function () { setChargerType(t); setComparison(null) }}
+                      onClick={function () { setChargerType(t) }}
                       className={'p-2 rounded-lg text-center text-[11px] transition-all ' +
                         (isSelected
                           ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-300 dark:border-emerald-700 ring-1 ring-emerald-400/50'
@@ -511,7 +571,7 @@ export default function TripPlanner() {
                   )
                 })}
               </div>
-              <p className="text-[10px] text-gray-400 mt-1.5 text-center">Tap a type to select, then click Plan Trip</p>
+              <p className="text-[10px] text-gray-400 mt-1.5 text-center">Tap a type to switch charger preference</p>
             </div>
           )}
         </div>
@@ -660,7 +720,7 @@ export default function TripPlanner() {
                       <div className="flex items-center justify-between mb-2.5">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-xs font-bold text-emerald-600 dark:text-emerald-400">{stopIdx}</div>
-                          <span className="text-sm font-semibold text-gray-900 dark:text-white">{stop.station_name || 'Stop ' + stopIdx}</span>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white">{stop.station_name || 'Stop ' + stopIdx}{stop.address ? ' · ' + shortPlace(stop.address) : ''}</span>
                         </div>
                         <span className={'text-[10px] font-medium px-2 py-0.5 rounded-full ' + chargerBg + ' ' + chargerColor}>{chargerLabelText}</span>
                       </div>

@@ -10,7 +10,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { useVehicle } from '../../context/VehicleContext'
 import { useStationSocket } from '../../context/StationSocketContext'
-import { formatDistance, formatDuration } from '../../utils/formatters'
+import { formatDistance, formatDuration, shortPlace } from '../../utils/formatters'
 import MapSearchBar from './MapSearchBar'
 import 'leaflet/dist/leaflet.css'
 
@@ -77,7 +77,7 @@ var StationMarker = memo(function ({ station }) {
         <div className="flex items-center justify-between mb-1.5">
           <div className="flex items-center gap-1.5">
             <div className={'w-2 h-2 rounded-full shrink-0 ' + (mStatus === 'ACTIVE' ? 'bg-emerald-500' : mStatus === 'MAINTENANCE' ? 'bg-amber-500' : 'bg-gray-400')} />
-            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">{station.name}</h3>
+            <h3 className="font-semibold text-sm text-gray-900 dark:text-white">{station.name} · {shortPlace(station.address)}</h3>
           </div>
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 leading-relaxed">{station.address}</p>
@@ -113,7 +113,7 @@ export default function MapView({ routePlan }) {
   var [isLocating, setIsLocating] = useState(false)
   var [slotTypeFilter, setSlotTypeFilter] = useState([])
   var [showFilterPanel, setShowFilterPanel] = useState(false)
-  var [showRoutePopup, setShowRoutePopup] = useState(false)
+  var [showRoutePopup, setShowRoutePopup] = useState(routePlan?.autoShowRoute || false)
   var filterRef = useRef(null)
   var userMenuRef = useRef(null)
   var { user, logoutUser } = useAuth()
@@ -340,7 +340,7 @@ export default function MapView({ routePlan }) {
           if (!stopLat || !stopLng) return null
           return <Marker key={'stop-' + i} position={[stopLat, stopLng]} icon={createStopIcon(i + 1)}>
             <Popup><div className="min-w-[200px]">
-              <h3 className="font-semibold text-sm text-gray-900 dark:text-white mb-1">{stop.station_name || stop.name || 'Charging Stop'}</h3>
+              <h3 className="font-semibold text-sm text-gray-900 dark:text-white mb-1">{stop.station_name || stop.name || 'Charging Stop'}{stop.address ? ' · ' + shortPlace(stop.address) : ''}</h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{stop.address || ''}</p>
               {stop.arrival_soc_percent != null && <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500 mb-1.5">
                 <span className="bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded text-amber-600 dark:text-amber-400 font-medium">Arrive {stop.arrival_soc_percent}%</span>
@@ -432,7 +432,7 @@ export default function MapView({ routePlan }) {
                 {bp.stops.map(function (stop, i) {
                   return <div key={i} className="flex items-center gap-2.5 bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2.5">
                     <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0"><span className="text-[10px] font-bold text-amber-400">{i + 1}</span></div>
-                    <div className="flex-1 min-w-0"><div className="text-xs font-medium text-white truncate">{stop.station_name || 'Station ' + (i + 1)}</div><div className="flex items-center gap-2 text-[10px] text-gray-400 mt-0.5"><span>Arrive {stop.arrival_soc_percent}%</span><FiArrowRight className="w-2.5 h-2.5" /><span className="text-emerald-400">{formatDuration(stop.charge_time_seconds)}</span></div></div>
+                    <div className="flex-1 min-w-0"><div className="text-xs font-medium text-white truncate">{stop.station_name || 'Station ' + (i + 1)}{stop.address ? ' · ' + shortPlace(stop.address) : ''}</div><div className="flex items-center gap-2 text-[10px] text-gray-400 mt-0.5"><span>Arrive {stop.arrival_soc_percent}%</span><FiArrowRight className="w-2.5 h-2.5" /><span className="text-emerald-400">{formatDuration(stop.charge_time_seconds)}</span></div></div>
                     <span className="text-[11px] font-medium text-emerald-400 whitespace-nowrap">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(stop.cost)}</span>
                   </div>
                 })}

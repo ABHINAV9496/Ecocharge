@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FiCalendar, FiX, FiBatteryCharging, FiCheckCircle, FiClock, FiRefreshCw } from 'react-icons/fi'
+import { FiCalendar, FiX, FiBatteryCharging, FiCheckCircle, FiClock, FiRefreshCw, FiZap } from 'react-icons/fi'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { getBookings, cancelBooking } from '../api/bookings'
@@ -115,8 +115,19 @@ export default function BookingsPage() {
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-900 dark:text-white">{stationName}</p>
+                          {booking.vehicle_details && (
+                            <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                              <FiZap className="w-3 h-3 inline mr-0.5 text-emerald-400" />
+                              {booking.vehicle_details.make} {booking.vehicle_details.model}
+                            </p>
+                          )}
                           <p className="text-xs text-gray-500 dark:text-gray-400">
                             {formatDate(booking.start_time)}
+                            {booking.end_time && (function () {
+                              var diffMs = new Date(booking.end_time) - new Date(booking.start_time)
+                              var diffH = Math.round(diffMs / 3600000 * 10) / 10
+                              return <>{' · '}<FiClock className="w-3 h-3 inline mr-0.5" />{diffH >= 1 ? diffH + 'h' : Math.round(diffMs / 60000) + 'm'}</>
+                            })()}
                             {' · '}
                             <span className={isActive ? 'text-emerald-500 font-medium' : ''}>{booking.status}</span>
                           </p>

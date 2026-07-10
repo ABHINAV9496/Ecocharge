@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FiCalendar, FiNavigation, FiBatteryCharging, FiDollarSign, FiTrash2, FiMap, FiClock, FiZap } from 'react-icons/fi'
 import { formatCurrency, formatDate } from '../../utils/formatters'
-import { getTrips, deleteTrip } from '../../api/trips'
+import { getTrips, deleteTrip, updateTrip } from '../../api/trips'
 import { useToast } from '../../context/ToastContext'
 
 export default function TripHistory(props) {
@@ -45,6 +45,34 @@ export default function TripHistory(props) {
       console.error('Failed to delete trip:', e)
       showToast('Could not delete trip', 'error')
     }
+  }
+
+  function statusBadgeClass(status) {
+    if (status === 'PLANNED') return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800'
+    if (status === 'IN_PROGRESS') return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'
+    return 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+  }
+
+  function statusLabel(status) {
+    if (status === 'PLANNED') return 'Planned'
+    if (status === 'IN_PROGRESS') return 'In Progress'
+    return 'Completed'
+  }
+
+  async function handleStartTrip(id) {
+    try {
+      await updateTrip(id, { status: 'IN_PROGRESS' })
+      setTrips(trips.map(function (t) { return t.id === id ? Object.assign({}, t, { status: 'IN_PROGRESS' }) : t }))
+      showToast('Trip started!', 'success')
+    } catch (e) { console.error('Start trip error:', e); showToast('Could not start trip', 'error') }
+  }
+
+  async function handleCompleteTrip(id) {
+    try {
+      await updateTrip(id, { status: 'COMPLETED' })
+      setTrips(trips.map(function (t) { return t.id === id ? Object.assign({}, t, { status: 'COMPLETED' }) : t }))
+      showToast('Trip completed!', 'success')
+    } catch (e) { console.error('Complete trip error:', e); showToast('Could not complete trip', 'error') }
   }
 
   var stats = {
@@ -112,6 +140,7 @@ export default function TripHistory(props) {
                     <FiCalendar className="w-3.5 h-3.5" />
                     {formatDate(trip.created_at)}
                     {durationHrs && <><span className="text-gray-300 dark:text-gray-600">|</span><FiClock className="w-3 h-3" />{durationHrs}</>}
+                    <span className={'text-[10px] font-medium px-1.5 py-0.5 rounded-md border ' + statusBadgeClass(trip.status)}>{statusLabel(trip.status)}</span>
                   </div>
                   <button onClick={function () { handleDeleteTrip(trip.id) }}
                     className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all" title="Delete trip">
@@ -143,15 +172,37 @@ export default function TripHistory(props) {
                   </div>
                 </div>
 
-                <div className="flex gap-1.5">
+                <div className="flex gap-2">
+                  {trip.status === 'PLANNED' && (
+                    <button onClick={function () { handleStartTrip(trip.id) }}
+                      className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiZap className="w-3 h-3" /> Start Trip</button>
+                  )}
+                  {trip.status === 'IN_PROGRESS' && (
+                    <button onClick={function () { handleCompleteTrip(trip.id) }}
+                      className="flex-1 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-[11px] font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiBatteryCharging className="w-3.5 h-3.5" /> Complete Trip</button>
+                  )}
                   <button onClick={function () {
+                    var stops = trip.stops || []
                     if (trip.route_geometry && trip.route_geometry.length > 0) {
-                      navigate('/map', { state: { routePlan: { route: trip.route_geometry, originName: trip.origin, destName: trip.destination, origin: { lat: trip.origin_lat, lng: trip.origin_lng }, destination: { lat: trip.dest_lat, lng: trip.dest_lng }, distance: (trip.distance_km || 0) * 1000, duration: (trip.duration_minutes || 0) * 60 } } })
+                      navigate('/map', { state: { routePlan: {
+                        route: trip.route_geometry,
+                        originName: trip.origin,
+                        destName: trip.destination,
+                        origin: { lat: trip.origin_lat, lng: trip.origin_lng },
+                        destination: { lat: trip.dest_lat, lng: trip.dest_lng },
+                        distance: (trip.distance_km || 0) * 1000,
+                        duration: (trip.duration_minutes || 0) * 60,
+                        stops: stops,
+                        backendPlan: {
+                          stops: stops,
+                          total_charge_time_seconds: stops.reduce(function (s, stop) { return s + (stop.charge_time_seconds || 0) }, 0),
+                          total_cost: parseFloat(trip.total_cost || 0),
+                        },
+                      } } })
                     } else {
                       navigate('/map', { state: { tripId: trip.id } })
                     }
-                  }} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiMap className="w-3 h-3" /> View on Map</button>
-                  <button onClick={function () { navigate('/trips', { state: { tripId: trip.id } }) }} className="flex-1 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-[11px] font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiZap className="w-3 h-3" /> Details</button>
+                  }} className={'py-1.5 text-[11px] font-medium rounded-lg transition-all flex items-center justify-center gap-1 ' + (trip.status === 'COMPLETED' ? 'w-full bg-emerald-500 hover:bg-emerald-600 text-white' : 'px-3 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700')}><FiMap className="w-3 h-3" /> View on Map</button>
                 </div>
               </div>
             )

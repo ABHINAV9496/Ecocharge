@@ -1,5 +1,5 @@
 import { FiMapPin, FiBatteryCharging, FiZap } from 'react-icons/fi'
-import { formatDuration, chargerLabel } from '../../utils/formatters'
+import { formatDuration, chargerLabel, shortPlace } from '../../utils/formatters'
 
 export default function TripTimeline({ originName, destName, batteryPercent, stops, legs, finalSoc }) {
   if (!legs || legs.length === 0) return null
@@ -19,6 +19,7 @@ export default function TripTimeline({ originName, destName, batteryPercent, sto
       items.push({
         type: 'stop',
         name: stops[i].station_name || 'Stop ' + (i + 1),
+        address: stops[i].address,
         arrivalSoc: stops[i].arrival_soc_percent,
         departureSoc: stops[i].departure_soc_percent,
         chargeTime: stops[i].charge_time_seconds,
@@ -87,7 +88,8 @@ export default function TripTimeline({ originName, destName, batteryPercent, sto
                 )}
                 {!isOrigin && !isDest && (
                   <>
-                    <div className="text-[11px] font-semibold text-gray-900 dark:text-white" title={item.name}>{truncate(item.name, 15)}</div>
+                    <div className="text-[11px] font-semibold text-gray-900 dark:text-white" title={item.name}>{truncate(item.name, 12)}</div>
+                    <div className="text-[9px] text-gray-500 dark:text-gray-400 truncate max-w-[80px]">{shortPlace(item.address)}</div>
                     <div className="text-[10px] text-gray-400 dark:text-gray-500 flex items-center justify-center gap-0.5"><FiZap className="w-2.5 h-2.5" />{chargerLabel(item.slotType)} · {item.chargerPowerKw || '?'} kW</div>
                     <div className="text-[10px] text-gray-500 dark:text-gray-400">{item.arrivalSoc}% → {item.departureSoc}%</div>
                     <div className="text-[10px] text-gray-400 dark:text-gray-500">{formatDuration(item.chargeTime)}</div>
