@@ -26,7 +26,6 @@ var BookingsPage = lazy(function () { return import('./pages/BookingsPage') })
 var AdminPage = lazy(function () { return import('./pages/AdminPage') })
 var StationDetailPage = lazy(function () { return import('./pages/StationDetailPage') })
 var NotificationCenter = lazy(function () { return import('./pages/NotificationCenter') })
-var VehiclesPage = lazy(function () { return import('./pages/VehiclesPage') })
 
 function PageLoader() {
   return (
@@ -83,14 +82,6 @@ function App() {
               element={
                 <ProtectedRoute roles={['DRIVER']}>
                   <ErrorBoundary><BookingsPage /></ErrorBoundary>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/vehicles"
-              element={
-                <ProtectedRoute roles={['DRIVER']}>
-                  <ErrorBoundary><VehiclesPage /></ErrorBoundary>
                 </ProtectedRoute>
               }
             />
