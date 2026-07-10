@@ -84,18 +84,37 @@ class TripListCreateView(generics.ListCreateAPIView):
         create_notification(
             user=self.request.user,
             notification_type='TRIP',
-            title='Trip Completed',
-            message=f'Trip from {trip.origin} to {trip.destination} completed — {trip.distance_km:.1f} km',
+            title='Trip Planned',
+            message=f'Trip from {trip.origin} to {trip.destination} planned — {trip.distance_km:.1f} km',
             link='/trips',
         )
 
 
-class TripDetailView(generics.RetrieveDestroyAPIView):
+class TripDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TripSerializer
     permission_classes = [permissions.IsAuthenticated, IsDriver]
 
     def get_queryset(self):
         return Trip.objects.filter(driver=self.request.user)
+
+    def perform_update(self, serializer):
+        trip = serializer.save()
+        if trip.status == Trip.STATUS_IN_PROGRESS:
+            create_notification(
+                user=self.request.user,
+                notification_type='TRIP',
+                title='Trip Started',
+                message=f'Trip from {trip.origin} to {trip.destination} has started!',
+                link='/trips',
+            )
+        elif trip.status == Trip.STATUS_COMPLETED:
+            create_notification(
+                user=self.request.user,
+                notification_type='TRIP',
+                title='Trip Completed',
+                message=f'Trip from {trip.origin} to {trip.destination} completed — {trip.distance_km:.1f} km',
+                link='/trips',
+            )
 
 
 def _fetch_weather_for_plan(plan, route_coords):

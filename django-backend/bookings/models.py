@@ -15,6 +15,10 @@ class Booking(models.Model):
     slot = models.ForeignKey(
         'stations.ChargingSlot', on_delete=models.CASCADE, related_name='bookings'
     )
+    vehicle = models.ForeignKey(
+        'vehicles.VehicleProfile', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='bookings'
+    )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     start_time = models.DateTimeField()
     end_time = models.DateTimeField(null=True, blank=True)
@@ -22,4 +26,5 @@ class Booking(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Booking {self.id} - {self.driver.username}"
+        vehicle_str = f" ({self.vehicle})" if self.vehicle else ""
+        return f"Booking {self.id} - {self.driver.username}{vehicle_str}"

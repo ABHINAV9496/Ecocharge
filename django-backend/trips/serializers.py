@@ -12,7 +12,7 @@ class TripSerializer(serializers.ModelSerializer):
             'battery_start_percent', 'battery_end_percent',
             'predicted_battery_readings', 'actual_battery_readings',
             'route_geometry', 'stops', 'total_cost', 'energy_consumed_kwh',
-            'created_at',
+            'status', 'created_at',
         ]
         read_only_fields = ['id', 'driver', 'created_at']
 

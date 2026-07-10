@@ -12,6 +12,8 @@ from events.helpers import send_slot_update
 from notifications.helpers import create_notification
 from stations.models import ChargingSlot, ChargingStation
 
+from vehicles.models import VehicleProfile
+
 from .models import Booking
 from .serializers import BookingSerializer
 
@@ -22,17 +24,26 @@ CHARGER_POWER_MAP = {
     'AC_SLOW': 3.3,
 }
 
-def calc_booking_cost(slot, start_time, end_time):
+def calc_booking_cost(slot, start_time, end_time, vehicle=None):
     duration_hours = 1
     if end_time and start_time:
         try:
             from dateutil import parser
             st = parser.parse(start_time) if isinstance(start_time, str) else start_time
             et = parser.parse(end_time) if isinstance(end_time, str) else end_time
-            duration_hours = (et - st).seconds / 3600
+            duration_hours = (et - st).total_seconds() / 3600
         except Exception:
             duration_hours = 1
-    power_kw = CHARGER_POWER_MAP.get(slot.slot_type, 7.4)
+
+    nominal_power = CHARGER_POWER_MAP.get(slot.slot_type, 7.4)
+
+    if vehicle:
+        is_dc = slot.slot_type in ('DC_FAST', 'DC_ULTRA')
+        vehicle_power = vehicle.fast_charge_kw if is_dc else vehicle.ac_charge_kw
+        power_kw = min(vehicle_power, nominal_power) if vehicle_power else nominal_power
+    else:
+        power_kw = nominal_power
+
     estimated_kwh = duration_hours * power_kw
     return round(estimated_kwh * float(slot.rate_per_kwh), 2)
 
@@ -99,6 +110,7 @@ class CreateBookingView(APIView):
         slot_id = request.data.get('slot')
         start_time = request.data.get('start_time')
         end_time = request.data.get('end_time')
+        vehicle_id = request.data.get('vehicle_id')
 
         if not slot_id:
             return Response({'error': 'Slot ID is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -111,7 +123,24 @@ class CreateBookingView(APIView):
         if slot.status != 'AVAILABLE':
             return Response({'error': 'Slot is not available'}, status=status.HTTP_400_BAD_REQUEST)
 
-        amount = calc_booking_cost(slot, start_time, end_time)
+        if start_time:
+            from django.utils import timezone
+            try:
+                from dateutil import parser
+                st = parser.parse(start_time) if isinstance(start_time, str) else start_time
+                if st < timezone.now():
+                    return Response({'error': 'Cannot book in the past'}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception:
+                return Response({'error': 'Invalid start_time format'}, status=status.HTTP_400_BAD_REQUEST)
+
+        vehicle = None
+        if vehicle_id:
+            try:
+                vehicle = VehicleProfile.objects.get(pk=vehicle_id)
+            except VehicleProfile.DoesNotExist:
+                return Response({'error': 'Vehicle not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        amount = calc_booking_cost(slot, start_time, end_time, vehicle)
 
         try:
             with transaction.atomic():
@@ -119,9 +148,23 @@ class CreateBookingView(APIView):
                 if slot.status != 'AVAILABLE':
                     return Response({'error': 'Slot was just booked'}, status=status.HTTP_400_BAD_REQUEST)
 
+                if start_time and end_time:
+                    from dateutil import parser
+                    st = parser.parse(start_time) if isinstance(start_time, str) else start_time
+                    et = parser.parse(end_time) if isinstance(end_time, str) else end_time
+                    overlapping = Booking.objects.filter(
+                        slot=slot,
+                        status__in=['CONFIRMED', 'IN_PROGRESS'],
+                        end_time__gt=st,
+                        start_time__lt=et,
+                    ).exists()
+                    if overlapping:
+                        return Response({'error': 'This slot is already booked for the selected time'}, status=status.HTTP_400_BAD_REQUEST)
+
                 booking = Booking.objects.create(
                     driver=request.user,
                     slot=slot,
+                    vehicle=vehicle,
                     start_time=start_time,
                     end_time=end_time,
                     status='PENDING',

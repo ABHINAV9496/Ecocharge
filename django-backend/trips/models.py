@@ -2,6 +2,15 @@ from django.db import models
 
 
 class Trip(models.Model):
+    STATUS_PLANNED = 'PLANNED'
+    STATUS_IN_PROGRESS = 'IN_PROGRESS'
+    STATUS_COMPLETED = 'COMPLETED'
+    TRIP_STATUS_CHOICES = [
+        (STATUS_PLANNED, 'Planned'),
+        (STATUS_IN_PROGRESS, 'In Progress'),
+        (STATUS_COMPLETED, 'Completed'),
+    ]
+
     driver = models.ForeignKey(
         'users.CustomUser', on_delete=models.CASCADE, related_name='trips'
     )
@@ -21,7 +30,8 @@ class Trip(models.Model):
     stops = models.JSONField(default=list)
     total_cost = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     energy_consumed_kwh = models.FloatField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=TRIP_STATUS_CHOICES, default=STATUS_PLANNED)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.driver.username}: {self.origin} → {self.destination}"
+        return f"{self.driver.username}: {self.origin} → {self.destination} ({self.status})"
