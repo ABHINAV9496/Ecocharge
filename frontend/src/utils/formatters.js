@@ -91,6 +91,14 @@ export var SLOT_TYPE_LABELS = {
   AC_SLOW: 'AC Slow (3.3 kW)',
 }
 
+export function shortPlace(address) {
+  if (!address) return ''
+  var parts = address.split(',').map(function (p) { return p.trim() }).filter(Boolean)
+  var last = parts[parts.length - 1]
+  if (last && /\d{5,6}/.test(last)) parts.pop()
+  return parts.slice(-2).join(', ')
+}
+
 export var ROLE_LABELS = {
   DRIVER: 'Driver',
   STATION_OWNER: 'Station Owner',

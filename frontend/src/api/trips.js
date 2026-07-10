@@ -15,3 +15,7 @@ export function createTrip(data) {
 export function deleteTrip(id) {
   return apiClient.delete('/api/trips/' + id + '/')
 }
+
+export function updateTrip(id, data) {
+  return apiClient.patch('/api/trips/' + id + '/', data)
+}
