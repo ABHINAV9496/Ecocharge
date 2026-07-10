@@ -1,19 +1,17 @@
 ﻿import { useState, useEffect } from 'react'
 import { Navigate } from 'react-router-dom'
-import { FiMapPin, FiPlus, FiChevronLeft, FiChevronRight, FiZap, FiEdit2, FiTrash2, FiUsers, FiCalendar, FiDollarSign, FiTrendingUp, FiRefreshCw, FiBarChart2, FiCheckCircle, FiXCircle, FiClock, FiUser, FiSearch, FiStar } from 'react-icons/fi'
+import { FiMapPin, FiPlus, FiChevronLeft, FiChevronRight, FiZap, FiEdit2, FiTrash2, FiUsers, FiCalendar, FiDollarSign, FiBarChart2, FiClock, FiSearch, FiStar } from 'react-icons/fi'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import Navbar from '../components/layout/Navbar'
 import Sidebar from '../components/layout/Sidebar'
-import { getStations, getMyStations, createStation, updateStation, deleteStation, getStationStats, getOwnerRevenue, getReviews, getMaintenanceSchedules } from '../api/stations'
+import { getStations, getMyStations, createStation, updateStation, deleteStation, getReviews, getMaintenanceSchedules } from '../api/stations'
 import { getBookings } from '../api/bookings'
 import { getPaymentHistory, deletePayment } from '../api/payments'
 import { getUsers, updateUserRole, deleteUser } from '../api/users'
 import { formatCurrency, formatDate, SLOT_TYPE_LABELS } from '../utils/formatters'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, PieChart, Pie, Cell } from 'recharts'
 
 var TABS = [
-  { key: 'overview', label: 'Overview', icon: FiTrendingUp },
   { key: 'users', label: 'Users', icon: FiUsers },
   { key: 'stations', label: 'Stations', icon: FiMapPin },
   { key: 'bookings', label: 'Bookings', icon: FiCalendar },
@@ -30,153 +28,6 @@ function SectionHeader({ icon: Icon, title, subtitle }) {
         <h2 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h2>
         {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
       </div>
-    </div>
-  )
-}
-
-function StatsCard({ label, value, icon: Icon, color }) {
-  return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{label}</span>
-        <Icon className={'w-4 h-4 ' + color} />
-      </div>
-      <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-    </div>
-  )
-}
-
-// ===== OVERVIEW TAB =====
-function OverviewTab() {
-  var [stats, setStats] = useState(null)
-  var [stations, setStations] = useState([])
-  var [bookings, setBookings] = useState([])
-  var [revenueByStation, setRevenueByStation] = useState([])
-  var [loading, setLoading] = useState(true)
-
-  useEffect(function () {
-    Promise.all([
-      getStationStats(),
-      getStations({ page_size: 200 }),
-      getBookings(),
-      getOwnerRevenue(),
-    ]).then(function ([statsRes, stationsRes, bookingsRes, revRes]) {
-      setStats(statsRes.data)
-      setStations(stationsRes.data.results || stationsRes.data)
-      setBookings(bookingsRes.data)
-      setRevenueByStation(revRes.data || [])
-    }).catch(function () { }).finally(function () { setLoading(false) })
-  }, [])
-
-  var displayStats = stats ? [
-    { label: 'Users', value: stats.total_users, icon: FiUsers, color: 'text-blue-500' },
-    { label: 'Stations', value: stats.total_stations, icon: FiMapPin, color: 'text-emerald-500' },
-    { label: 'Total Slots', value: stats.total_slots, icon: FiZap, color: 'text-purple-500' },
-    { label: 'Bookings', value: stats.total_bookings, icon: FiCalendar, color: 'text-orange-500' },
-    { label: 'Revenue', value: formatCurrency(stats.revenue), icon: FiDollarSign, color: 'text-pink-500' },
-    { label: 'Active Drivers', value: stats.active_drivers, icon: FiUser, color: 'text-cyan-500' },
-  ] : []
-
-  if (loading) {
-    return <div className="p-8 text-center text-gray-400">Loading...</div>
-  }
-
-  var revenueByDate = {}
-  bookings.forEach(function (b) {
-    var date = formatDate(b.created_at).split(',')[0]
-    revenueByDate[date] = (revenueByDate[date] || 0) + parseFloat(b.amount_charged || 0)
-  })
-  var revenueData = Object.entries(revenueByDate).map(function (e) { return { date: e[0], revenue: e[1] } })
-
-  var statusCount = { PENDING: 0, CONFIRMED: 0, COMPLETED: 0, CANCELLED: 0 }
-  bookings.forEach(function (b) { statusCount[b.status] = (statusCount[b.status] || 0) + 1 })
-  var pieData = Object.entries(statusCount).filter(function (e) { return e[1] > 0 }).map(function (e) { return { name: e[0], value: e[1] } })
-  var PIE_COLORS = { PENDING: '#f59e0b', CONFIRMED: '#3b82f6', COMPLETED: '#10b981', CANCELLED: '#ef4444' }
-
-  return (
-    <div className="p-6 space-y-6">
-      <SectionHeader icon={FiTrendingUp} title="Platform Overview" subtitle="System-wide statistics and metrics" />
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {displayStats.map(function (s) { return <StatsCard key={s.label} {...s} /> })}
-      </div>
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue Over Time</h3>
-          {revenueData.length > 1 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={revenueData}>
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="#6b7280" />
-                <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" />
-                <Tooltip />
-                <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-8 text-gray-400">
-              <FiBarChart2 className="w-8 h-8 mb-2" />
-              <p className="text-sm">Not enough data</p>
-            </div>
-          )}
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Booking Status</h3>
-          {pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                  {pieData.map(function (e) { return <Cell key={e.name} fill={PIE_COLORS[e.name] || '#6b7280'} /> })}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-8 text-gray-400">
-              <FiBarChart2 className="w-8 h-8 mb-2" />
-              <p className="text-sm">No booking data</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {revenueByStation.length > 0 && (
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue by Station</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={revenueByStation.slice(0, 15)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="station_name" tick={{ fontSize: 8 }} stroke="#6b7280" />
-                <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" />
-                <Tooltip />
-                <Bar dataKey="total_revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Slot Occupancy %</h3>
-            {stations.some(function (s) { return (s.slots || []).length > 0 }) ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={stations.filter(function (s) { return (s.slots || []).length > 0 }).map(function (s) {
-                  var total = s.slots.length
-                  var occupied = s.slots.filter(function (sl) { return sl.status === 'OCCUPIED' || sl.status === 'FAULT' }).length
-                  return { name: s.name.length > 12 ? s.name.slice(0, 12) + '...' : s.name, occupancy: Math.round((occupied / total) * 100) }
-                })}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="name" tick={{ fontSize: 8 }} stroke="#6b7280" />
-                  <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" domain={[0, 100]} />
-                  <Tooltip />
-                  <Bar dataKey="occupancy" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-gray-400">
-                <FiBarChart2 className="w-8 h-8 mb-2" />
-                <p className="text-sm">No slot data</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -490,8 +341,7 @@ function BookingsTab() {
 
   function loadData(s, q, p) {
     setLoading(true)
-    var params = {}
-    if (p > 1) params.page = p
+    var params = { page: p, page_size: 10 }
     if (q) params.q = q
     if (s && s !== 'ALL') params.status = s
     getBookings(params).then(function (res) {
@@ -533,14 +383,28 @@ function BookingsTab() {
             {bookings.map(function (b) {
               var sc = STATUS_COLORS[b.status] || STATUS_COLORS.PENDING
               var stationName = b.slot_details ? b.slot_details.station_name : 'Slot #' + b.slot
+              var slotType = b.slot_details ? b.slot_details.slot_type : null
+              var durationStr = ''
+              if (b.start_time && b.end_time) {
+                var diffMs = new Date(b.end_time) - new Date(b.start_time)
+                var diffH = Math.round(diffMs / 3600000 * 10) / 10
+                durationStr = diffH >= 1 ? diffH + 'h' : Math.round(diffMs / 60000) + 'm'
+              }
               return (
                 <div key={b.id} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/50">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-sm text-gray-900 dark:text-white">{stationName}</span>
+                      {slotType && (
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400">{slotType === 'DC_ULTRA' ? 'DC Ultra' : slotType === 'DC_FAST' ? 'DC Fast' : slotType === 'AC_FAST' ? 'AC Fast' : slotType === 'AC_SLOW' ? 'AC Slow' : slotType}</span>
+                      )}
                       <span className={'text-xs font-medium px-2 py-0.5 rounded-full ' + sc}>{b.status}</span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">Driver: {b.driver_username || 'N/A'} | {formatDate(b.start_time)}</p>
+                    <p className="text-xs text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-2">
+                      Driver: {b.driver_username || 'N/A'} | {b.start_time ? formatDate(b.start_time) + ' ' + new Date(b.start_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'No date'}
+                      {durationStr && <> | <FiClock className="w-3 h-3 inline" /> {durationStr}</>}
+                      {b.vehicle_details && <> | <FiZap className="w-3 h-3 inline text-emerald-400" /> {b.vehicle_details.make} {b.vehicle_details.model}</>}
+                    </p>
                   </div>
                   <span className="text-sm font-bold text-gray-900 dark:text-white whitespace-nowrap ml-3">{formatCurrency(b.amount_charged)}</span>
                 </div>
@@ -643,7 +507,7 @@ function PaymentsTab() {
 // ===== MAIN EXPORT =====
 export default function AdminPage() {
   var { user } = useAuth()
-  var [activeTab, setActiveTab] = useState('overview')
+  var [activeTab, setActiveTab] = useState('users')
 
   if (!user || user.role !== 'SUPER_ADMIN') {
     return <Navigate to="/dashboard" replace />
@@ -682,7 +546,6 @@ export default function AdminPage() {
             </div>
 
             <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
-              {activeTab === 'overview' && <OverviewTab />}
               {activeTab === 'users' && <UsersTab />}
               {activeTab === 'stations' && <StationsTab />}
               {activeTab === 'bookings' && <BookingsTab />}

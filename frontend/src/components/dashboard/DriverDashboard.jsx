@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiUser, FiTruck, FiBatteryCharging, FiCalendar, FiX, FiBarChart2, FiMap, FiNavigation, FiBell, FiDollarSign, FiPlus, FiArrowRight, FiPhone, FiPlay, FiCheckCircle } from 'react-icons/fi'
+import { FiUser, FiTruck, FiBatteryCharging, FiCalendar, FiX, FiBarChart2, FiMap, FiNavigation, FiBell, FiDollarSign, FiPlus, FiArrowRight, FiPhone, FiPlay, FiCheckCircle, FiZap } from 'react-icons/fi'
 import { updateProfile } from '../../api/auth'
 import { getBookings, cancelBooking, startCharging, completeCharging } from '../../api/bookings'
 import { getTrips } from '../../api/trips'
@@ -477,6 +477,12 @@ export default function DriverDashboard() {
                         {slotType && sc && (
                           <span className={'text-[10px] font-medium px-1.5 py-0.5 rounded-md leading-none'} style={{ background: sc.bg, color: sc.text }}>
                             {slotType === 'DC_ULTRA' ? 'DC Ultra' : slotType === 'DC_FAST' ? 'DC Fast' : slotType === 'AC_FAST' ? 'AC Fast' : slotType === 'AC_SLOW' ? 'AC Slow' : slotType}
+                          </span>
+                        )}
+                        {booking.vehicle_details && (
+                          <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 flex items-center gap-0.5">
+                            <FiZap className="w-3 h-3 text-emerald-400" />
+                            {booking.vehicle_details.make} {booking.vehicle_details.model}
                           </span>
                         )}
                       </div>

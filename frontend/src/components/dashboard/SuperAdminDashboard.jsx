@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { FiUsers, FiMapPin, FiCalendar, FiDollarSign, FiTrendingUp, FiRefreshCw, FiChevronLeft, FiChevronRight, FiSearch } from 'react-icons/fi'
-import { getStations, getStationStats, getOwnerRevenue } from '../../api/stations'
+import { FiUsers, FiMapPin, FiCalendar, FiDollarSign, FiTrendingUp, FiChevronLeft, FiChevronRight, FiSearch, FiZap, FiClock } from 'react-icons/fi'
+import { getStations, getStationStats } from '../../api/stations'
 import { getBookings } from '../../api/bookings'
 import { formatCurrency, formatDate, shortPlace } from '../../utils/formatters'
 import { SkeletonStats, SkeletonTable } from '../layout/Skeleton'
-import { LineChart, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { LineChart, XAxis, YAxis, Tooltip, ResponsiveContainer, Line } from 'recharts'
 import NotificationBell from './NotificationBell'
 
 function Pagination({ page, totalPages, onPageChange }) {
@@ -33,10 +33,8 @@ function Pagination({ page, totalPages, onPageChange }) {
 
 export default function SuperAdminDashboard() {
   var [stations, setStations] = useState([])
-  var [allBookings, setAllBookings] = useState([])
   var [recentBookings, setRecentBookings] = useState([])
   var [stats, setStats] = useState(null)
-  var [revenueByStation, setRevenueByStation] = useState([])
   var [loading, setLoading] = useState(true)
   var [error, setError] = useState('')
   var [bookingError, setBookingError] = useState('')
@@ -50,23 +48,13 @@ export default function SuperAdminDashboard() {
   var [bookingSearch, setBookingSearch] = useState('')
 
   useEffect(function () {
-    async function loadData() {
-      try {
-        var [statsRes, bookingsRes, revRes] = await Promise.all([
-          getStationStats(),
-          getBookings(),
-          getOwnerRevenue(),
-        ])
-        setStats(statsRes.data)
-        setAllBookings(bookingsRes.data)
-        setRevenueByStation(revRes.data || [])
-      } catch (error) {
-        console.error('Failed to load dashboard data:', error)
-        setError('Could not load dashboard data.')
-      }
+    getStationStats().then(function (res) {
+      setStats(res.data)
+    }).catch(function () {
+      setError('Could not load dashboard data.')
+    }).finally(function () {
       setLoading(false)
-    }
-    loadData()
+    })
   }, [])
 
   function loadStations(p, q) {
@@ -102,12 +90,12 @@ export default function SuperAdminDashboard() {
     { label: 'Active Drivers', value: stats.active_drivers, icon: FiUsers, color: 'text-orange-500' },
     { label: 'Revenue', value: formatCurrency(stats.revenue), icon: FiDollarSign, color: 'text-pink-500' },
   ] : [
-    { label: 'Stations', value: stations.length, icon: FiMapPin, color: 'text-emerald-500' },
-    { label: 'Total Slots', value: stations.reduce(function (s, st) { return s + (st.slots ? st.slots.length : 0) }, 0), icon: FiTrendingUp, color: 'text-blue-500' },
-    { label: 'Available', value: stations.reduce(function (s, st) { return s + (st.slots ? st.slots.filter(function (x) { return x.status === 'AVAILABLE' }).length : 0) }, 0), icon: FiTrendingUp, color: 'text-green-500' },
-    { label: 'Bookings', value: allBookings.length, icon: FiCalendar, color: 'text-purple-500' },
-    { label: 'Active Drivers', value: new Set(allBookings.map(function (b) { return b.driver_username })).size, icon: FiUsers, color: 'text-orange-500' },
-    { label: 'Revenue', value: formatCurrency(allBookings.reduce(function (s, b) { return s + parseFloat(b.amount_charged || 0) }, 0)), icon: FiDollarSign, color: 'text-pink-500' },
+    { label: 'Stations', value: 0, icon: FiMapPin, color: 'text-emerald-500' },
+    { label: 'Total Slots', value: 0, icon: FiTrendingUp, color: 'text-blue-500' },
+    { label: 'Available', value: 0, icon: FiTrendingUp, color: 'text-green-500' },
+    { label: 'Bookings', value: 0, icon: FiCalendar, color: 'text-purple-500' },
+    { label: 'Active Drivers', value: 0, icon: FiUsers, color: 'text-orange-500' },
+    { label: 'Revenue', value: formatCurrency(0), icon: FiDollarSign, color: 'text-pink-500' },
   ]
 
   if (loading) {
@@ -153,102 +141,27 @@ export default function SuperAdminDashboard() {
         })}
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        {(function () {
-          var revenueByDate = {}
-          allBookings.forEach(function (b) {
-            var date = formatDate(b.created_at).split(',')[0]
-            revenueByDate[date] = (revenueByDate[date] || 0) + parseFloat(b.amount_charged || 0)
-          })
-          var revenueData = Object.entries(revenueByDate).map(function (e) { return { date: e[0], revenue: e[1] } })
-
-          var statusCount = { PENDING: 0, CONFIRMED: 0, COMPLETED: 0, CANCELLED: 0 }
-          allBookings.forEach(function (b) { statusCount[b.status] = (statusCount[b.status] || 0) + 1 })
-          var pieData = Object.entries(statusCount).filter(function (e) { return e[1] > 0 }).map(function (e) { return { name: e[0], value: e[1] } })
-          var PIE_COLORS = { PENDING: '#f59e0b', CONFIRMED: '#3b82f6', COMPLETED: '#10b981', CANCELLED: '#ef4444' }
-
-          var hasAnyData = revenueData.length > 0 || pieData.length > 0
-
-          return (
-            <>
-              {revenueData.length > 1 ? (
-                <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue Over Time</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart data={revenueData}>
-                      <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="#6b7280" />
-                      <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue Over Time</h3>
-                  <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-gray-500">
-                    <FiTrendingUp className="w-8 h-8 mb-2" />
-                    <p className="text-sm">{hasAnyData ? 'Not enough data for trend' : 'No revenue data yet'}</p>
-                  </div>
-                </div>
-              )}
-              {pieData.length > 0 ? (
-                <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Booking Status</h3>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <PieChart>
-                      <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                        {pieData.map(function (e) { return <Cell key={e.name} fill={PIE_COLORS[e.name] || '#6b7280'} /> })}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Booking Status</h3>
-                  <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-gray-500">
-                    <FiTrendingUp className="w-8 h-8 mb-2" />
-                    <p className="text-sm">No booking data yet</p>
-                  </div>
-                </div>
-              )}
-            </>
-          )
-        })()}
-
-        {revenueByStation.length > 0 && (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue by Station</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={revenueByStation.slice(0, 12)}>
-                <XAxis dataKey="station_name" tick={{ fontSize: 8 }} stroke="#6b7280" />
-                <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" />
-                <Tooltip />
-                <Bar dataKey="total_revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+      {(stats.revenue_by_date && stats.revenue_by_date.length > 1) ? (
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue Over Time</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={stats.revenue_by_date}>
+              <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="#6b7280" />
+              <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" />
+              <Tooltip />
+              <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Revenue Over Time</h3>
+          <div className="flex flex-col items-center justify-center py-8 text-gray-400 dark:text-gray-500">
+            <FiTrendingUp className="w-8 h-8 mb-2" />
+            <p className="text-sm">No revenue data yet</p>
           </div>
-        )}
-
-        {stations.some(function (s) { return (s.slots || []).length > 0 }) && (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Slot Occupancy %</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={stations.filter(function (s) { return (s.slots || []).length > 0 }).map(function (s) {
-                var total = s.slots.length
-                var occupied = s.slots.filter(function (sl) { return sl.status === 'OCCUPIED' || sl.status === 'FAULT' }).length
-                return { name: s.name.length > 12 ? s.name.slice(0, 12) + '...' : s.name, occupancy: Math.round((occupied / total) * 100) }
-              })}>
-                <XAxis dataKey="name" tick={{ fontSize: 8 }} stroke="#6b7280" />
-                <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" domain={[0, 100]} />
-                <Tooltip />
-                <Bar dataKey="occupancy" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="grid md:grid-cols-2 gap-6">
         <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
@@ -306,7 +219,6 @@ export default function SuperAdminDashboard() {
             <FiCalendar className="w-4 h-4 text-gray-400" />
             Recent Bookings
           </h2>
-
           <div className="mb-3">
             <div className="relative">
               <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
@@ -314,19 +226,41 @@ export default function SuperAdminDashboard() {
                 className="w-full pl-9 pr-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" />
             </div>
           </div>
-
           <div className="space-y-2 max-h-72 overflow-y-auto">
             {recentBookings.length === 0 ? (
               <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">No bookings yet</p>
             ) : (
               recentBookings.map(function (booking) {
+                var stationName = booking.slot_details ? booking.slot_details.station_name : 'Slot #' + booking.slot
+                var durationStr = ''
+                if (booking.start_time && booking.end_time) {
+                  var diffMs = new Date(booking.end_time) - new Date(booking.start_time)
+                  var diffH = Math.round(diffMs / 3600000 * 10) / 10
+                  durationStr = diffH >= 1 ? diffH + 'h' : Math.round(diffMs / 60000) + 'm'
+                }
                 return (
-                  <div key={booking.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-xl">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">{booking.driver_username || 'Unknown'}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{booking.status}</p>
+                  <div key={booking.id} className="p-3 bg-gray-50 dark:bg-gray-900 rounded-xl">
+                    <div className="flex items-start justify-between mb-1">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{stationName}</p>
+                      <span className="text-sm font-bold text-gray-900 dark:text-white shrink-0 ml-2">{formatCurrency(booking.amount_charged)}</span>
                     </div>
-                    <span className="text-sm font-bold text-gray-900 dark:text-white">{formatCurrency(booking.amount_charged)}</span>
+                    <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400 flex-wrap">
+                      <span>{booking.driver_username || 'Unknown'}</span>
+                      <span className="text-gray-300 dark:text-gray-600">|</span>
+                      <span className={'px-1.5 py-0.5 rounded font-medium ' + (booking.status === 'CONFIRMED' ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30' : booking.status === 'IN_PROGRESS' ? 'text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30' : 'text-gray-500 bg-gray-200 dark:bg-gray-700')}>{booking.status}</span>
+                      {booking.vehicle_details && (
+                        <><span className="text-gray-300 dark:text-gray-600">|</span>
+                          <FiZap className="w-3 h-3 text-emerald-400" />
+                          <span>{booking.vehicle_details.make} {booking.vehicle_details.model}</span></>
+                      )}
+                      {durationStr && (
+                        <><span className="text-gray-300 dark:text-gray-600">|</span>
+                          <FiClock className="w-3 h-3" />{durationStr}</>
+                      )}
+                    </div>
+                    {booking.start_time && (
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">{formatDate(booking.start_time)}</p>
+                    )}
                   </div>
                 )
               })

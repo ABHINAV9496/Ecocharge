@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { FiPlus, FiMapPin, FiTrendingUp, FiCalendar, FiZap, FiDollarSign, FiEdit2, FiTrash2, FiCrosshair, FiChevronLeft, FiChevronRight, FiXCircle, FiCheckCircle, FiSearch, FiEdit3, FiBarChart2 } from 'react-icons/fi'
+import { FiPlus, FiMapPin, FiTrendingUp, FiCalendar, FiZap, FiDollarSign, FiEdit2, FiTrash2, FiCrosshair, FiChevronLeft, FiChevronRight, FiXCircle, FiCheckCircle, FiSearch, FiEdit3, FiBarChart2, FiClock } from 'react-icons/fi'
 import { getMyStations, createStation, updateStation, deleteStation, createSlot, getOwnerRevenue } from '../../api/stations'
 import { getBookings, ownerCompleteBooking, ownerNoShowBooking } from '../../api/bookings'
 import { formatCurrency, formatDate, SLOT_TYPE_LABELS } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
 import { SkeletonStats } from '../layout/Skeleton'
-import { LineChart, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { LineChart, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Line } from 'recharts'
 import NotificationBell from './NotificationBell'
 import StationReviews from './StationReviews'
 import SlotEditForm from './SlotEditForm'
@@ -14,6 +14,7 @@ import MaintenanceScheduleForm from './MaintenanceScheduleForm'
 export default function StationOwnerDashboard() {
   var [stations, setStations] = useState([])
   var [bookings, setBookings] = useState([])
+  var [allBookings, setAllBookings] = useState([])
   var [showForm, setShowForm] = useState(false)
   var [editingStation, setEditingStation] = useState(null)
   var [form, setForm] = useState({ name: '', address: '', latitude: '', longitude: '', amenities: '', status: 'ACTIVE' })
@@ -49,8 +50,7 @@ export default function StationOwnerDashboard() {
   }
 
   function loadBookings(p, q, s) {
-    var params = {}
-    if (p > 1) params.page = p
+    var params = { page: p, page_size: 10 }
     if (q) params.q = q
     if (s && s !== 'ALL') params.status = s
     getBookings(params).then(function (res) {
@@ -75,6 +75,10 @@ export default function StationOwnerDashboard() {
       setLoading(false)
     }
     loadData()
+    // Background: fetch all bookings for stats/charts
+    getBookings().then(function (res) {
+      setAllBookings(Array.isArray(res.data) ? res.data : [])
+    }).catch(function () {})
   }, [page])
 
   function handleBookingSearch(v) { setBookingSearch(v); setBookingPage(1); loadBookings(1, v, bookingStatus) }
@@ -85,10 +89,8 @@ export default function StationOwnerDashboard() {
   var slotCount = stations.reduce(function (sum, station) {
     return sum + (station.slots ? station.slots.length : 0)
   }, 0)
-  var revenue = bookings
-    .filter(function (b) { return ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED'].includes(b.status) })
-    .reduce(function (sum, b) { return sum + parseFloat(b.amount_charged || 0) }, 0)
-  var activeBookings = bookings.filter(function (b) { return ['CONFIRMED', 'IN_PROGRESS'].includes(b.status) }).length
+  var revenue = revenueByStation.reduce(function (sum, r) { return sum + r.total_revenue }, 0)
+  var activeBookings = allBookings.filter(function (b) { return ['CONFIRMED', 'IN_PROGRESS'].includes(b.status) }).length
 
   async function handleSaveStation() {
     setFormError('')
@@ -246,7 +248,7 @@ export default function StationOwnerDashboard() {
       <div className="grid md:grid-cols-2 gap-4">
         {(function () {
           var revenueByDate = {}
-          bookings.filter(function (b) { return ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED'].includes(b.status) }).forEach(function (b) {
+          allBookings.filter(function (b) { return ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED'].includes(b.status) }).forEach(function (b) {
             var date = formatDate(b.created_at).split(',')[0]
             revenueByDate[date] = (revenueByDate[date] || 0) + parseFloat(b.amount_charged || 0)
           })
@@ -263,7 +265,7 @@ export default function StationOwnerDashboard() {
           var PIE_COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b']
 
           var hasSlots = stations.some(function (s) { return (s.slots || []).length > 0 })
-          var hasBookings = bookings.length > 0
+          var hasBookings = allBookings.length > 0
 
           return (
             <>
@@ -529,44 +531,59 @@ export default function StationOwnerDashboard() {
           </div>
         ) : (
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
-            {bookings.map(function (booking) {
-              var isConfirmed = booking.status === 'CONFIRMED'
-              var isInProgress = booking.status === 'IN_PROGRESS'
-              var stationName = booking.slot_details ? booking.slot_details.station_name : 'Slot #' + booking.slot
+              {bookings.map(function (booking) {
+                var isConfirmed = booking.status === 'CONFIRMED'
+                var isInProgress = booking.status === 'IN_PROGRESS'
+                var stationName = booking.slot_details ? booking.slot_details.station_name : 'Slot #' + booking.slot
+                var slotType = booking.slot_details ? booking.slot_details.slot_type : null
+                var durationStr = ''
+                if (booking.start_time && booking.end_time) {
+                  var diffMs = new Date(booking.end_time) - new Date(booking.start_time)
+                  var diffH = Math.round(diffMs / 3600000 * 10) / 10
+                  durationStr = diffH >= 1 ? diffH + 'h' : Math.round(diffMs / 60000) + 'm'
+                }
 
-              return (
-                <div key={booking.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">{booking.driver_username}</span>
-                      <span className="text-xs text-gray-500">at {stationName}</span>
-                      <span className={['px-2 py-0.5 text-xs font-medium rounded-full',
-                        isConfirmed ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400' :
-                        isInProgress ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' :
-                        booking.status === 'COMPLETED' ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' :
-                        'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'].join(' ')}>{booking.status}</span>
+                return (
+                  <div key={booking.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">{booking.driver_username}</span>
+                        <span className="text-xs text-gray-500">at {stationName}</span>
+                        {slotType && (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400">{slotType === 'DC_ULTRA' ? 'DC Ultra' : slotType === 'DC_FAST' ? 'DC Fast' : slotType === 'AC_FAST' ? 'AC Fast' : slotType === 'AC_SLOW' ? 'AC Slow' : slotType}</span>
+                        )}
+                        <span className={['px-2 py-0.5 text-xs font-medium rounded-full',
+                          isConfirmed ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400' :
+                          isInProgress ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' :
+                          booking.status === 'COMPLETED' ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' :
+                          'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'].join(' ')}>{booking.status}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap items-center gap-x-2">
+                        {booking.start_time ? formatDate(booking.start_time) : formatDate(booking.created_at)}
+                        {durationStr && <><FiClock className="w-3 h-3 inline" /> {durationStr}</>}
+                        {booking.vehicle_details && (
+                          <><FiZap className="w-3 h-3 inline text-emerald-400" /> {booking.vehicle_details.make} {booking.vehicle_details.model}</>
+                        )}
+                        <span>| {formatCurrency(booking.amount_charged)}</span>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {formatDate(booking.created_at)} | {formatCurrency(booking.amount_charged)}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isConfirmed && (
+                        <button onClick={function () { handleOwnerNoShow(booking.id) }}
+                          className="px-3 py-1.5 text-xs font-medium text-amber-500 hover:text-white hover:bg-amber-500 border border-amber-200 dark:border-amber-800 rounded-lg hover:border-amber-500 transition-all flex items-center gap-1">
+                          <FiXCircle className="w-3.5 h-3.5" /> No Show
+                        </button>
+                      )}
+                      {isInProgress && (
+                        <button onClick={function () { handleOwnerComplete(booking.id) }}
+                          className="px-3 py-1.5 text-xs font-medium text-blue-500 hover:text-white hover:bg-blue-500 border border-blue-200 dark:border-blue-800 rounded-lg hover:border-blue-500 transition-all flex items-center gap-1">
+                          <FiCheckCircle className="w-3.5 h-3.5" /> Force Complete
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {isConfirmed && (
-                      <button onClick={function () { handleOwnerNoShow(booking.id) }}
-                        className="px-3 py-1.5 text-xs font-medium text-amber-500 hover:text-white hover:bg-amber-500 border border-amber-200 dark:border-amber-800 rounded-lg hover:border-amber-500 transition-all flex items-center gap-1">
-                        <FiXCircle className="w-3.5 h-3.5" /> No Show
-                      </button>
-                    )}
-                    {isInProgress && (
-                      <button onClick={function () { handleOwnerComplete(booking.id) }}
-                        className="px-3 py-1.5 text-xs font-medium text-blue-500 hover:text-white hover:bg-blue-500 border border-blue-200 dark:border-blue-800 rounded-lg hover:border-blue-500 transition-all flex items-center gap-1">
-                        <FiCheckCircle className="w-3.5 h-3.5" /> Force Complete
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+                )
+              })}
           </div>
         )}
 
