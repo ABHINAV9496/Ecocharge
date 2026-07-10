@@ -29,6 +29,7 @@ def send_booking_confirmation(booking_id):
 def auto_cancel_expired_bookings():
     from datetime import timedelta
 
+    from events.helpers import send_slot_update
     from notifications.helpers import create_notification
 
     now = timezone.now()
@@ -47,6 +48,7 @@ def auto_cancel_expired_bookings():
             booking.status = 'COMPLETED'
             booking.save()
 
+        send_slot_update(booking.slot.station.id)
         create_notification(
             user=booking.driver,
             notification_type='BOOKING',

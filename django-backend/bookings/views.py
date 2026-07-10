@@ -8,6 +8,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from events.helpers import send_slot_update
 from notifications.helpers import create_notification
 from stations.models import ChargingSlot, ChargingStation
 
@@ -199,6 +200,8 @@ class BookingDetailView(APIView):
 
                 booking.status = 'CANCELLED'
                 booking.save()
+
+            send_slot_update(slot.station.id)
         except Exception as e:
             return Response(
                 {'error': str(e)},
@@ -259,6 +262,8 @@ class BookingStartView(APIView):
             slot.status = 'OCCUPIED'
             slot.save(update_fields=['status'])
 
+            send_slot_update(slot.station.id)
+
         create_notification(
             user=request.user,
             notification_type='BOOKING',
@@ -293,6 +298,8 @@ class BookingCompleteView(APIView):
 
             booking.status = 'COMPLETED'
             booking.save()
+
+            send_slot_update(slot.station.id)
 
         try:
             from payments.models import Payment
@@ -346,6 +353,8 @@ class BookingOwnerCompleteView(APIView):
             booking.status = 'COMPLETED'
             booking.save()
 
+            send_slot_update(slot.station.id)
+
         create_notification(
             user=booking.driver,
             notification_type='BOOKING',
@@ -380,6 +389,8 @@ class BookingOwnerNoShowView(APIView):
 
             booking.status = 'CANCELLED'
             booking.save()
+
+            send_slot_update(slot.station.id)
 
         create_notification(
             user=booking.driver,

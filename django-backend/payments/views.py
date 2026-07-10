@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from bookings.models import Booking
+from events.helpers import send_slot_update
 from notifications.helpers import create_notification
 
 from .models import Payment
@@ -172,6 +173,8 @@ class VerifyPaymentView(APIView):
             slot.status = 'OCCUPIED'
             slot.save(update_fields=['status'])
 
+            send_slot_update(slot.station.id)
+
         create_notification(
             user=request.user,
             notification_type='PAYMENT',
@@ -238,6 +241,8 @@ class CapturePaymentView(APIView):
 
             booking.status = 'COMPLETED'
             booking.save(update_fields=['status'])
+
+            send_slot_update(slot.station.id)
 
         create_notification(
             user=request.user,

@@ -19,3 +19,24 @@ def send_user_event(user_id, event_type, payload):
             'payload': payload,
         },
     )
+
+
+def send_slot_update(station_id):
+    channel_layer = get_channel_layer()
+    if channel_layer is None:
+        logger.error("Channel layer not available — cannot send slot update")
+        return
+    async_to_sync(channel_layer.group_send)(
+        f'station_{station_id}',
+        {
+            'type': 'slot_update',
+            'station_id': station_id,
+        },
+    )
+    async_to_sync(channel_layer.group_send)(
+        'stations_global',
+        {
+            'type': 'slot_update',
+            'station_id': station_id,
+        },
+    )
