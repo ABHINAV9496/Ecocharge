@@ -2,6 +2,7 @@ from django.contrib.gis.db.models.functions import Distance
 from django.contrib.gis.geos import Point, Polygon
 from django.contrib.gis.measure import D
 from django.db.models import Count, Q, Sum
+from django.db.models.functions import TruncDate
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
@@ -346,6 +347,19 @@ class StationStatsView(APIView):
         )['total'] or 0
         active_drivers = booking_qs.values('driver_id').distinct().count()
 
+        revenue_by_date = list(
+            booking_qs.annotate(date=TruncDate('created_at'))
+            .values('date')
+            .annotate(revenue=Sum('amount_charged'))
+            .order_by('date')
+        )
+
+        status_counts = dict(
+            booking_qs.values('status')
+            .annotate(count=Count('id'))
+            .values_list('status', 'count')
+        )
+
         return Response({
             'total_stations': total_stations,
             'total_slots': slot_stats['total'],
@@ -355,6 +369,8 @@ class StationStatsView(APIView):
             'active_drivers': active_drivers,
             'total_users': CustomUser.objects.count(),
             'total_drivers': CustomUser.objects.filter(role='DRIVER').count(),
+            'revenue_by_date': revenue_by_date,
+            'status_counts': status_counts,
         })
 
 
@@ -445,26 +461,37 @@ class OwnerStationRevenueView(APIView):
         if request.user.role == 'STATION_OWNER':
             stations = stations.filter(owner=request.user)
 
-        revenue_data = []
-        for station in stations:
-            agg = Booking.objects.filter(
-                slot__station=station,
+        revenue_data = list(
+            Booking.objects.filter(
+                slot__station__in=stations,
                 status__in=['CONFIRMED', 'IN_PROGRESS', 'COMPLETED']
-            ).aggregate(
-                total=Sum('amount_charged'),
-                count=Count('id')
             )
-            total_revenue = float(agg['total'] or 0)
-            if total_revenue > 0:
-                revenue_data.append({
-                    'station_id': station.id,
-                    'station_name': station.name,
-                    'total_revenue': total_revenue,
-                    'booking_count': agg['count'],
-                })
+            .values('slot__station')
+            .annotate(
+                total_revenue=Sum('amount_charged'),
+                booking_count=Count('id'),
+            )
+            .filter(total_revenue__gt=0)
+            .order_by('-total_revenue')
+        )
 
-        revenue_data.sort(key=lambda x: x['total_revenue'], reverse=True)
-        serializer = OwnerRevenueSerializer(revenue_data, many=True)
+        station_ids = [r['slot__station'] for r in revenue_data]
+        station_map = dict(
+            ChargingStation.objects.filter(id__in=station_ids)
+            .values_list('id', 'name')
+        )
+
+        result = [
+            {
+                'station_id': r['slot__station'],
+                'station_name': station_map.get(r['slot__station'], ''),
+                'total_revenue': float(r['total_revenue']),
+                'booking_count': r['booking_count'],
+            }
+            for r in revenue_data
+        ]
+
+        serializer = OwnerRevenueSerializer(result, many=True)
         return Response(serializer.data)
 
 

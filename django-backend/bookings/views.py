@@ -60,15 +60,15 @@ class BookingListView(APIView):
 
     def get(self, request):
         if request.user.role == 'SUPER_ADMIN':
-            bookings = Booking.objects.all().order_by('-created_at')
+            bookings = Booking.objects.all().select_related('slot', 'driver', 'vehicle').order_by('-created_at')
         elif request.user.role == 'STATION_OWNER':
             bookings = Booking.objects.filter(
                 slot__station__owner=request.user
-            ).order_by('-created_at')
+            ).select_related('slot', 'driver', 'vehicle').order_by('-created_at')
         else:
             bookings = Booking.objects.filter(
                 driver=request.user
-            ).order_by('-created_at')
+            ).select_related('slot', 'driver', 'vehicle').order_by('-created_at')
 
         q = request.query_params.get('q')
         if q:
