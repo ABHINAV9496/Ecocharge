@@ -117,7 +117,7 @@ export default function VehicleSelector(props) {
       )}
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-72 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-[2000] max-h-96 overflow-y-auto">
+        <div className="absolute top-full left-0 mt-1 w-72 max-w-[calc(100vw-2rem)] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-[2000] max-h-96 overflow-y-auto">
           <div className="p-2 border-b border-gray-800">
             <div className="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2">
               <FiSearch className="w-3.5 h-3.5 text-gray-500" />

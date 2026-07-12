@@ -311,7 +311,7 @@ function MyStationsTab() {
         <div className="p-4 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
           <h4 className="text-xs font-semibold text-gray-900 dark:text-white mb-3">{editing ? 'Edit Station' : 'New Station'}</h4>
           {formError && <div className="mb-3 p-2 bg-red-50 dark:bg-red-900/30 text-red-600 text-xs rounded-xl">{formError}</div>}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input type="text" placeholder="Name" value={form.name} onChange={function (e) { setForm(Object.assign({}, form, { name: e.target.value })) }} className="px-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 outline-none focus:ring-2 focus:ring-emerald-500" />
             <input type="text" placeholder="Address" value={form.address} onChange={function (e) { setForm(Object.assign({}, form, { address: e.target.value })) }} className="px-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 outline-none focus:ring-2 focus:ring-emerald-500" />
             <input type="number" step="any" placeholder="Latitude" value={form.latitude} onChange={function (e) { setForm(Object.assign({}, form, { latitude: e.target.value })) }} className="px-3 py-2 text-xs border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 outline-none focus:ring-2 focus:ring-emerald-500" />
@@ -527,7 +527,7 @@ export default function AdminPage() {
                 <TabIcon className="w-5 h-5 text-emerald-500" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin Panel</h1>
+                <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Admin Panel</h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Complete platform management</p>
               </div>
             </div>

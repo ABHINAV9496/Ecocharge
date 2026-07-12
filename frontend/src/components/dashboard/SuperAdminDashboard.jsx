@@ -119,7 +119,7 @@ export default function SuperAdminDashboard() {
             <FiTrendingUp className="w-5 h-5 text-emerald-500" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Admin Dashboard</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Admin Dashboard</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">Platform-wide overview and statistics</p>
           </div>
         </div>

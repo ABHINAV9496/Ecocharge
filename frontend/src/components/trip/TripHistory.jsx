@@ -107,7 +107,7 @@ export default function TripHistory(props) {
       )}
 
       {trips.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
             <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total Trips</p>
             <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{stats.total}</p>
@@ -157,7 +157,7 @@ export default function TripHistory(props) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 mb-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2.5">
                   <div className="bg-gray-50 dark:bg-gray-900 rounded-xl px-2.5 py-2 text-center">
                     <div className="text-[10px] text-gray-400 dark:text-gray-500">Distance</div>
                     <div className="text-xs font-semibold text-gray-900 dark:text-white">{trip.distance_km ? trip.distance_km.toFixed(1) : '-'} km</div>

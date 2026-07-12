@@ -43,7 +43,7 @@ export default function SlotEditForm({ slot, stationId, onClose, onSaved }) {
   }
 
   return (
-    <div className="flex items-center gap-2 mt-1.5 p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+    <div className="flex items-center gap-2 flex-wrap mt-1.5 p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
       <select value={form.slot_type} onChange={function (e) { setForm(Object.assign({}, form, { slot_type: e.target.value })) }}
         className="flex-1 px-2 py-1 text-[10px] border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none">
         {Object.entries(SLOT_TYPE_LABELS).map(function (e) { return <option key={e[0]} value={e[0]}>{e[1]}</option> })}

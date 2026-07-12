@@ -218,7 +218,7 @@ export default function StationOwnerDashboard() {
             <FiMapPin className="w-5 h-5 text-emerald-500" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Station Owner Dashboard</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">Station Owner Dashboard</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">Manage your charging stations and slots</p>
           </div>
         </div>
@@ -378,7 +378,7 @@ export default function StationOwnerDashboard() {
           <div className="p-5 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">{editingStation ? 'Edit Station' : 'New Station'}</h3>
             {formError && <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm rounded-xl">{formError}</div>}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input type="text" placeholder="Station Name" value={form.name} onChange={function (e) { setForm(Object.assign({}, form, { name: e.target.value })) }} className="px-3.5 py-2.5 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" />
               <input type="text" placeholder="Address" value={form.address} onChange={function (e) { setForm(Object.assign({}, form, { address: e.target.value })) }} className="px-3.5 py-2.5 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" />
               <input type="number" step="any" placeholder="Latitude" value={form.latitude} onChange={function (e) { setForm(Object.assign({}, form, { latitude: e.target.value })) }} className="px-3.5 py-2.5 text-sm border border-gray-300 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500" />
