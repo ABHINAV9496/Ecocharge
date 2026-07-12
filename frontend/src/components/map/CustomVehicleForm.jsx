@@ -1,9 +1,12 @@
-import { useState } from 'react'
-import { FiX, FiPlus } from 'react-icons/fi'
+import { useState, useRef } from 'react'
+import { FiX, FiPlus, FiImage } from 'react-icons/fi'
 import { addCustomVehicle } from '../../data/vehicleProfiles'
 
 export default function CustomVehicleForm(props) {
   var { onClose, onAdded } = props
+  var fileRef = useRef(null)
+  var [imageFile, setImageFile] = useState(null)
+  var [imagePreview, setImagePreview] = useState(null)
   var [form, setForm] = useState({
     make: '',
     model: '',
@@ -68,6 +71,9 @@ export default function CustomVehicleForm(props) {
       consumption_wh_per_km: parseFloat(form.consumption_wh_per_km),
       fast_charge_kw: parseFloat(form.fast_charge_kw) || 0,
       ac_charge_kw: parseFloat(form.ac_charge_kw) || 0,
+    }
+    if (imageFile) {
+      vehicle.image = imageFile
     }
     try {
       var saved = await addCustomVehicle(vehicle)
@@ -136,6 +142,45 @@ export default function CustomVehicleForm(props) {
             <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1 block">AC Charge (kW)</label>
             <input type="number" step="0.1" placeholder="e.g. 7.4" value={form.ac_charge_kw} onChange={function (e) { set('ac_charge_kw', e.target.value) }} className={inputCls('ac_charge_kw')} min="0" max="50" />
             {errors.ac_charge_kw && <p className="text-[10px] text-red-400 mt-0.5">{errors.ac_charge_kw}</p>}
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1 block">Vehicle Image (optional)</label>
+            <div className="flex items-center gap-3">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={function (e) {
+                  var file = e.target.files[0]
+                  if (file) {
+                    setImageFile(file)
+                    setImagePreview(URL.createObjectURL(file))
+                  }
+                }}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={function () { if (fileRef.current) fileRef.current.click() }}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-300 hover:border-emerald-500 transition-colors"
+              >
+                <FiImage className="w-4 h-4 text-emerald-400" />
+                {imageFile ? imageFile.name : 'Choose file'}
+              </button>
+              {imagePreview && (
+                <div className="relative w-12 h-12 shrink-0">
+                  <img src={imagePreview} alt="Preview" className="w-full h-full object-contain rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={function () { setImageFile(null); setImagePreview(null); if (fileRef.current) fileRef.current.value = '' }}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px]"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <button

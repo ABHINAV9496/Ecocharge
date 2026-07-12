@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { FiBatteryCharging, FiUser, FiMail, FiLock, FiSmartphone, FiTruck, FiArrowRight, FiPlus } from 'react-icons/fi'
+import { FiBatteryCharging, FiUser, FiMail, FiLock, FiSmartphone, FiTruck, FiArrowRight, FiPlus, FiImage } from 'react-icons/fi'
 import { useAuth } from '../context/AuthContext'
 import { register as registerApi, login as loginApi } from '../api/auth'
 import { getVehicles, createVehicle } from '../api/vehicles'
@@ -34,6 +34,9 @@ export default function Register() {
     ac_charge_kw: '',
   })
   var redirectTimerRef = useRef(null)
+  var imageFileRef = useRef(null)
+  var [vehicleImageFile, setVehicleImageFile] = useState(null)
+  var [vehicleImagePreview, setVehicleImagePreview] = useState(null)
 
   function updateField(fieldName, value) {
     var updatedForm = Object.assign({}, form)
@@ -87,6 +90,9 @@ export default function Register() {
       consumption_wh_per_km: parseFloat(customForm.consumption_wh_per_km),
       fast_charge_kw: parseFloat(customForm.fast_charge_kw) || 0,
       ac_charge_kw: parseFloat(customForm.ac_charge_kw) || 0,
+    }
+    if (vehicleImageFile) {
+      vehicle._imageFile = vehicleImageFile
     }
     setSelectedVehicle(vehicle)
     updateField('car_model', vehicle.make + ' ' + vehicle.model)
@@ -152,7 +158,7 @@ export default function Register() {
           vehicleId = selectedVehicle.id
         } else {
           try {
-            var saved = await createVehicle({
+            var payload = {
               make: selectedVehicle.make,
               model: selectedVehicle.model,
               year: selectedVehicle.year,
@@ -160,7 +166,11 @@ export default function Register() {
               consumption_wh_per_km: selectedVehicle.consumption_wh_per_km,
               fast_charge_kw: selectedVehicle.fast_charge_kw || 0,
               ac_charge_kw: selectedVehicle.ac_charge_kw || 0,
-            })
+            }
+            if (selectedVehicle._imageFile) {
+              payload.image = selectedVehicle._imageFile
+            }
+            var saved = await createVehicle(payload)
             vehicleId = saved.data.id
           } catch (e) {
             console.error('Failed to create vehicle:', e)
@@ -405,6 +415,44 @@ export default function Register() {
                     <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">AC Charge (kW)</label>
                     <input type="number" step="0.1" value={customForm.ac_charge_kw} onChange={function (e) { setCustomForm(Object.assign({}, customForm, { ac_charge_kw: e.target.value })) }} placeholder="e.g. 7.4" className={'w-full px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:ring-2 focus:ring-emerald-500/30 transition-all text-sm ' + (customFormErrors.ac_charge_kw ? 'border-red-400' : 'border-emerald-200 dark:border-emerald-800/50')} min="0" max="50" />
                     {customFormErrors.ac_charge_kw && <p className="text-[10px] text-red-500 mt-0.5">{customFormErrors.ac_charge_kw}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Vehicle Image (optional)</label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        ref={imageFileRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={function (e) {
+                          var file = e.target.files[0]
+                          if (file) {
+                            setVehicleImageFile(file)
+                            setVehicleImagePreview(URL.createObjectURL(file))
+                          }
+                        }}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={function () { if (imageFileRef.current) imageFileRef.current.click() }}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-950 border border-emerald-200 dark:border-emerald-800/50 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:border-emerald-400 transition-colors"
+                      >
+                        <FiImage className="w-4 h-4 text-emerald-500" />
+                        {vehicleImageFile ? vehicleImageFile.name : 'Choose file'}
+                      </button>
+                      {vehicleImagePreview && (
+                        <div className="relative w-12 h-12 shrink-0">
+                          <img src={vehicleImagePreview} alt="Preview" className="w-full h-full object-contain rounded-lg" />
+                          <button
+                            type="button"
+                            onClick={function () { setVehicleImageFile(null); setVehicleImagePreview(null); if (imageFileRef.current) imageFileRef.current.value = '' }}
+                            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10pt] leading-none"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <button
                     type="button"

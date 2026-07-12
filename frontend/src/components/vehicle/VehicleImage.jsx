@@ -32,7 +32,7 @@ export default function VehicleImage(props) {
 
   return (
     <img
-      src={'/vehicles/' + vehicle.id + '.png'}
+      src={vehicle.image}
       alt={vehicle.make + ' ' + vehicle.model}
       className={dims.box + ' object-contain rounded-lg shrink-0 ' + (className || '')}
       onError={function () { setFailed(true) }}
