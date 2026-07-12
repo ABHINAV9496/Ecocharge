@@ -1,0 +1,90 @@
+services:
+  postgres:
+    image: ghcr.io/${GH_USERNAME}/ecocharge-postgres:latest
+    build: ./postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecouser -d ecocharge"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  django:
+    image: ghcr.io/${GH_USERNAME}/ecocharge-django:latest
+    build: ./django-backend
+    command: sh -c "daphne -b 0.0.0.0 -p 8000 core.asgi:application"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(5); s.connect(('127.0.0.1',8000)); s.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  fastapi:
+    image: ghcr.io/${GH_USERNAME}/ecocharge-fastapi:latest
+    build: ./fastapi-ai
+    command: uvicorn app:app --host 0.0.0.0 --port 8001
+    env_file: .env
+    depends_on:
+      - redis
+    restart: always
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(5); s.connect(('127.0.0.1',8001)); s.close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  celery_worker:
+    image: ghcr.io/${GH_USERNAME}/ecocharge-django:latest
+    command: celery -A core worker --loglevel=info
+    env_file: .env
+    depends_on:
+      - redis
+      - django
+    restart: always
+
+  celery_beat:
+    image: ghcr.io/${GH_USERNAME}/ecocharge-django:latest
+    command: celery -A core beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file: .env
+    depends_on:
+      - redis
+      - django
+    restart: always
+
+  nginx:
+    image: ghcr.io/${GH_USERNAME}/ecocharge-nginx:latest
+    build: ./nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - django
+      - fastapi
+    restart: always
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:

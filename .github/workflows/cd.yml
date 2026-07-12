@@ -1,0 +1,92 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+env:
+  COMPOSE_FILE: docker-compose.prod.yml
+  GH_USERNAME: ${{ github.repository_owner }}
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PAT }}
+
+      - name: Build production Docker images
+        run: docker compose build
+
+      - name: Tag and push images with git SHA
+        run: |
+          SHA=${{ github.sha }}
+          LC_SHA=$(echo "$SHA" | tr '[:upper:]' '[:lower:]')
+          for SERVICE in nginx django fastapi postgres; do
+            IMAGE="ghcr.io/${GH_USERNAME}/ecocharge-${SERVICE}"
+            echo "Tagging and pushing ${IMAGE}:${LC_SHA}"
+            docker tag "${IMAGE}:latest" "${IMAGE}:${LC_SHA}"
+            docker push "${IMAGE}:${LC_SHA}"
+          done
+
+      - name: Push latest tags
+        run: docker compose push
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: ENV_FILE,GH_USERNAME,GHCR_PAT
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+          GH_USERNAME: ${{ github.repository_owner }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+        script: |
+          set -e
+
+          echo "Creating project directory..."
+          mkdir -p ~/ecocharge
+
+          echo "Writing environment file..."
+          printf '%s\n' "$ENV_FILE" > ~/ecocharge/.env
+
+          cd ~/ecocharge
+
+          echo "Logging into GitHub Container Registry..."
+          echo "$GHCR_PAT" | docker login ghcr.io -u "$GH_USERNAME" --password-stdin
+
+          echo "Pulling latest Docker images..."
+          docker compose -f docker-compose.prod.yml pull
+
+          echo "Starting services..."
+          docker compose -f docker-compose.prod.yml up -d
+
+          echo "Waiting for containers to become healthy..."
+          for CONTAINER in $(docker compose -f docker-compose.prod.yml ps -q); do
+            NAME=$(docker inspect --format '{{.Name}}' "$CONTAINER" | sed 's/\///')
+            echo "  Waiting for $NAME..."
+            timeout 120 sh -c "while [ \"\$(docker inspect --format '{{.State.Health.Status}}' \"$CONTAINER\" 2>/dev/null)\" != 'healthy' ] && [ \"\$(docker inspect --format '{{.State.Status}}' \"$CONTAINER\")\" != 'exited' ]; do sleep 3; done" || true
+          done
+
+          echo "Running database migrations..."
+          docker compose -f docker-compose.prod.yml exec -T django python manage.py migrate
+
+          echo "Collecting static files..."
+          docker compose -f docker-compose.prod.yml exec -T django python manage.py collectstatic --noinput
+
+          echo "Removing unused Docker images..."
+          docker image prune -af
+
+          echo "Verifying all containers are running..."
+          docker compose -f docker-compose.prod.yml ps
+
+          echo "Deployment complete!"
