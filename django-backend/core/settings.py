@@ -277,6 +277,7 @@ if not DEBUG:
                 "bucket_name": env("AWS_S3_BUCKET"),
                 "region_name": env("AWS_S3_REGION_NAME"),
                 "custom_domain": env("AWS_S3_CUSTOM_DOMAIN", default=None),
+                "endpoint_url": env("AWS_S3_ENDPOINT_URL", default=None),
             },
         },
         "staticfiles": {
