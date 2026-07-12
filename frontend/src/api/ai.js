@@ -1,4 +1,4 @@
-var AI_API_URL = 'http://127.0.0.1:8001'
+var AI_API_URL = '/ai'
 
 function getToken() {
   var raw = localStorage.getItem('access_token')

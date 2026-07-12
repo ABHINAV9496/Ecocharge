@@ -29,7 +29,7 @@ jobs:
         run: |
           SHA=${{ github.sha }}
           LC_SHA=$(echo "$SHA" | tr '[:upper:]' '[:lower:]')
-          for SERVICE in nginx django fastapi postgres; do
+          for SERVICE in nginx django fastapi; do
             IMAGE="ghcr.io/${GH_USERNAME}/ecocharge-${SERVICE}"
             echo "Tagging and pushing ${IMAGE}:${LC_SHA}"
             docker tag "${IMAGE}:latest" "${IMAGE}:${LC_SHA}"

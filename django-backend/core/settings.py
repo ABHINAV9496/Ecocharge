@@ -103,11 +103,12 @@ WSGI_APPLICATION = 'core.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.contrib.gis.db.backends.postgis',
-        'NAME': 'ecocharge',
-        'USER': 'ecouser',
-        'PASSWORD': 'ecopass',
-        'HOST': env('DATABASE_HOST', default='postgres'),
-        'PORT': '5432',
+        'NAME': env('DB_NAME', default='ecocharge'),
+        'USER': env('DB_USER', default='ecouser'),
+        'PASSWORD': env('DB_PASSWORD', default='ecopass'),
+        'HOST': env('DB_HOST', default='postgres'),
+        'PORT': env('DB_PORT', default='5432'),
+        'OPTIONS': {'sslmode': 'require'} if not DEBUG else {},
     }
 }
 
@@ -179,12 +180,14 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
 }
 
-CORS_ALLOWED_ORIGINS = [
+CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
     'http://localhost:5173',
     'http://localhost:3000',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:3000',
-]
+])
+
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'EcoCharge API',
@@ -228,14 +231,18 @@ EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@ecocharge.com')
 
 # Celery settings
-CELERY_BROKER_URL = 'redis://redis:6379/0'
-CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
+CELERY_BROKER_URL = env('CELERY_BROKER_URL', default='redis://redis:6379/0')
+CELERY_RESULT_BACKEND = None
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'Asia/Kolkata'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    'region': env('AWS_SQS_REGION'),
+    'poll_interval': 10,
+}
 
 # Django Channels
 ASGI_APPLICATION = 'core.asgi.application'
@@ -261,8 +268,30 @@ CHANNEL_LAYERS = {
 RAZORPAY_KEY_ID = env('RAZORPAY_KEY_ID', default='rzp_test_placeholder')
 RAZORPAY_KEY_SECRET = env('RAZORPAY_KEY_SECRET', default='')
 
+# S3 / CloudFront media storage (used in production, local fallback in dev)
+if not DEBUG:
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            "OPTIONS": {
+                "bucket_name": env("AWS_S3_BUCKET"),
+                "region_name": env("AWS_S3_REGION_NAME"),
+                "custom_domain": env("AWS_S3_CUSTOM_DOMAIN", default=None),
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Security settings for HTTPS behind Nginx
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
