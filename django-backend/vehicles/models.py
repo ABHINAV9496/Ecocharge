@@ -19,6 +19,7 @@ class VehicleProfile(models.Model):
     ac_charge_kw = models.FloatField()
     is_builtin = models.BooleanField(default=True)
     charging_curve = models.JSONField(default=list, blank=True)
+    image = models.ImageField(upload_to='vehicles/', null=True, blank=True)
     owner = models.ForeignKey(
         'users.CustomUser', on_delete=models.CASCADE,
         null=True, blank=True, related_name='vehicles'

@@ -23,7 +23,7 @@ class VehicleListView(APIView):
                 is_builtin=False, owner=request.user
             )
             vehicles = vehicles | custom
-        serializer = VehicleProfileSerializer(vehicles, many=True)
+        serializer = VehicleProfileSerializer(vehicles, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request):
@@ -34,7 +34,7 @@ class VehicleListView(APIView):
         if serializer.is_valid():
             vehicle = serializer.save()
             return Response(
-                VehicleProfileSerializer(vehicle).data,
+                VehicleProfileSerializer(vehicle, context={'request': request}).data,
                 status=status.HTTP_201_CREATED
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -52,7 +52,7 @@ class VehicleDetailView(APIView):
                 {'error': 'Vehicle not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
-        serializer = VehicleProfileSerializer(vehicle)
+        serializer = VehicleProfileSerializer(vehicle, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk):

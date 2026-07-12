@@ -4,24 +4,35 @@ from .models import VehicleProfile
 
 
 class VehicleProfileSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
     class Meta:
         model = VehicleProfile
         fields = [
             'id', 'make', 'model', 'year', 'battery_kwh',
             'consumption_wh_per_km', 'fast_charge_kw', 'ac_charge_kw',
-            'charging_curve', 'is_builtin', 'created_at',
+            'charging_curve', 'is_builtin', 'created_at', 'image',
         ]
-        read_only_fields = ['id', 'is_builtin', 'created_at']
+        read_only_fields = ['id', 'is_builtin', 'created_at', 'image']
+
+    def get_image(self, obj):
+        if obj.image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
 
 class CreateVehicleSerializer(serializers.ModelSerializer):
     charging_curve = serializers.JSONField(required=False)
+    image = serializers.ImageField(required=False)
 
     class Meta:
         model = VehicleProfile
         fields = [
             'make', 'model', 'year', 'battery_kwh',
             'consumption_wh_per_km', 'fast_charge_kw', 'ac_charge_kw',
-            'charging_curve',
+            'charging_curve', 'image',
         ]
 
     def create(self, validated_data):
