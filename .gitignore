@@ -29,3 +29,6 @@ frontend/dist/
 
 # Log files
 *.log
+
+# Database dumps
+seed.json
