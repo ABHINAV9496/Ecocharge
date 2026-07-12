@@ -12,7 +12,7 @@ import axios from 'axios'
 
 // Create a shared axios client that all API files will use
 const apiClient = axios.create({
-  baseURL: '',           // Same server, no prefix needed
+  baseURL: import.meta.env.VITE_API_URL || '',
   headers: { 'Content-Type': 'application/json' },
 })
 
