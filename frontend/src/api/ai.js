@@ -1,4 +1,4 @@
-var AI_API_URL = '/ai'
+var AI_API_URL = (import.meta.env.VITE_API_URL || '') + '/ai'
 
 function getToken() {
   var raw = localStorage.getItem('access_token')
