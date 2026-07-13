@@ -61,7 +61,7 @@ apiClient.interceptors.response.use(
       if (refreshToken) {
         try {
           // Try to get a new access token using the refresh token
-          var response = await axios.post('/api/auth/token/refresh/', {
+          var response = await axios.post((import.meta.env.VITE_API_URL || '') + '/api/auth/token/refresh/', {
             refresh: refreshToken,
           })
 
