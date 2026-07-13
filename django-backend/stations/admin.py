@@ -59,10 +59,13 @@ class ChargingStationAdmin(admin.ModelAdmin):
     list_filter = ('status',)
     search_fields = ('name', 'address')
 
-    def save_model(self, request, obj, form, change):
+    def save_form(self, request, form, change):
+        obj = form.save(commit=False)
         if not change:
             obj.owner = request.user
-        super().save_model(request, obj, form, change)
+        obj.save()
+        form.save_m2m()
+        return obj
 
 @admin.register(ChargingSlot)
 class ChargingSlotAdmin(admin.ModelAdmin):
