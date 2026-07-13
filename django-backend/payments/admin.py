@@ -14,7 +14,4 @@ class PaymentAdmin(admin.ModelAdmin):
         'razorpay_order_id', 'razorpay_payment_id',
         'user__username', 'booking__id',
     ]
-    readonly_fields = [
-        'razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature',
-        'amount', 'currency', 'status', 'created_at', 'captured_at', 'refunded_at',
-    ]
+    readonly_fields = ['created_at', 'captured_at', 'refunded_at']

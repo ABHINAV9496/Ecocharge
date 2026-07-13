@@ -1,10 +1,11 @@
 from django.contrib import admin
+from django.contrib.gis import admin as gis_admin
 
 from .models import ChargingSlot, ChargingStation
 
 
 @admin.register(ChargingStation)
-class ChargingStationAdmin(admin.ModelAdmin):
+class ChargingStationAdmin(gis_admin.GISModelAdmin):
     list_display = ('name', 'owner', 'status', 'created_at')
     list_filter = ('status',)
     search_fields = ('name', 'address')
