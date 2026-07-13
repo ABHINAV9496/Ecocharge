@@ -8,7 +8,7 @@ export async function planRouteStream(data, onProgress, onResult, onError) {
   try {
     var token = localStorage.getItem('access_token')
     var headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }
-    var response = await fetch('/api/trips/plan-stream/', {
+    var response = await fetch((import.meta.env.VITE_API_URL || '') + '/api/trips/plan-stream/', {
       method: 'POST',
       headers: headers,
       body: JSON.stringify(data),
@@ -53,3 +53,4 @@ export async function planRouteStream(data, onProgress, onResult, onError) {
     onError(e.message || 'Network error')
   }
 }
+
