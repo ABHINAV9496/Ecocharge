@@ -77,15 +77,15 @@ export default function MaintenanceScheduleForm({ station, onSaved }) {
         <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
           {formError && <div className="mb-2 p-2 bg-red-50 dark:bg-red-900/30 text-red-600 text-[10px] rounded-lg">{formError}</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input type="datetime-local" value={form.start_time} onChange={function (e) { setForm(Object.assign({}, form, { start_time: e.target.value })) }}
+            <input type="datetime-local" value={form.start_time} onChange={function (e) { setForm(function (prev) { return { ...prev, start_time: e.target.value } }) }}
               className="px-2 py-1.5 text-[10px] border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none" />
-            <input type="datetime-local" value={form.end_time} onChange={function (e) { setForm(Object.assign({}, form, { end_time: e.target.value })) }}
+            <input type="datetime-local" value={form.end_time} onChange={function (e) { setForm(function (prev) { return { ...prev, end_time: e.target.value } }) }}
               className="px-2 py-1.5 text-[10px] border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none" />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-            <input type="text" placeholder="Reason for maintenance" value={form.reason} onChange={function (e) { setForm(Object.assign({}, form, { reason: e.target.value })) }}
+            <input type="text" placeholder="Reason for maintenance" value={form.reason} onChange={function (e) { setForm(function (prev) { return { ...prev, reason: e.target.value } }) }}
               className="col-span-2 px-2 py-1.5 text-[10px] border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none" />
-            <select value={form.slot} onChange={function (e) { setForm(Object.assign({}, form, { slot: e.target.value })) }}
+            <select value={form.slot} onChange={function (e) { setForm(function (prev) { return { ...prev, slot: e.target.value } }) }}
               className="col-span-2 px-2 py-1.5 text-[10px] border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white outline-none">
               <option value="">All slots (entire station)</option>
               {(station.slots || []).map(function (s) {
