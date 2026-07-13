@@ -274,8 +274,8 @@ if not DEBUG:
         "default": {
             "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
             "OPTIONS": {
-                "bucket_name": env("AWS_S3_BUCKET"),
-                "region_name": env("AWS_S3_REGION_NAME"),
+                "bucket_name": env("AWS_S3_BUCKET", default=""),
+                "region_name": env("AWS_S3_REGION_NAME", default=""),
                 "custom_domain": env("AWS_S3_CUSTOM_DOMAIN", default=None),
                 "endpoint_url": env("AWS_S3_ENDPOINT_URL", default=None),
             },
