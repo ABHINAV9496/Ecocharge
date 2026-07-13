@@ -13,9 +13,9 @@ var GUEST_LINKS = [
 ]
 
 var APP_LINKS = [
-  { label: 'Map', path: '/map' },
-  { label: 'Trips', path: '/trips' },
-  { label: 'Dashboard', path: '/dashboard' },
+  { label: 'Map', path: '/map', roles: ['DRIVER', 'STATION_OWNER', 'SUPER_ADMIN'] },
+  { label: 'Trips', path: '/trips', roles: ['DRIVER'] },
+  { label: 'Dashboard', path: '/dashboard', roles: ['DRIVER', 'STATION_OWNER', 'SUPER_ADMIN'] },
 ]
 
 export default function Navbar() {
@@ -29,7 +29,7 @@ export default function Navbar() {
     window.location.href = '/login'
   }
 
-  var links = user ? APP_LINKS : GUEST_LINKS
+  var links = user ? APP_LINKS.filter(function (l) { return l.roles.indexOf(user.role) !== -1 }) : GUEST_LINKS
 
   return (
     <nav className="fixed top-0 left-0 right-0 h-16 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 z-50">
