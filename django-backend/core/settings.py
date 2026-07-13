@@ -240,7 +240,7 @@ CELERY_TIMEZONE = 'Asia/Kolkata'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_TRANSPORT_OPTIONS = {
-    'region': env('AWS_SQS_REGION'),
+    'region': env('AWS_SQS_REGION', default=''),
     'poll_interval': 10,
 }
 
