@@ -49,11 +49,9 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: ENV_FILE,GH_USERNAME,GHCR_PAT
+          envs: ENV_FILE
         env:
           ENV_FILE: ${{ secrets.ENV_FILE }}
-          GH_USERNAME: ${{ github.repository_owner }}
-          GHCR_PAT: ${{ secrets.GHCR_PAT }}
         script: |
           set -e
 
@@ -64,9 +62,6 @@ jobs:
           printf '%s\n' "$ENV_FILE" > ~/ecocharge/.env
 
           cd ~/ecocharge
-
-          echo "Logging into GitHub Container Registry..."
-          echo "$GHCR_PAT" | docker login ghcr.io -u "$GH_USERNAME" --password-stdin
 
           echo "Pulling latest Docker images..."
           docker compose -f docker-compose.prod.yml pull
