@@ -17,6 +17,7 @@
   <img src="https://img.shields.io/badge/GitHub_Actions-CI%2FCD-2088FF?style=for-the-badge&logo=githubactions&logoColor=white" alt="GitHub Actions">
 </p>
 
+<<<<<<< HEAD
 <p align="center">
   <a href="https://ecocharge.vercel.app" target="_blank">
     <img src="https://img.shields.io/badge/Live_Demo-Visit-orange?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo">
@@ -24,13 +25,9 @@
 </p>
 
 <br>
+=======
+>>>>>>> 803c97eb6a1b54bde2185bf2b769ed9b90748c9b
 
-<!-- TODO: add screenshot or demo GIF -->
-<p align="center">
-  <em>📸 Screenshot / Demo GIF coming soon</em>
-</p>
-
-<br>
 
 ## 📑 Table of Contents
 
@@ -100,7 +97,6 @@
 | **AI Service** | FastAPI | 0.115 | Async API framework |
 | | Groq SDK | 0.12+ | LLM API client |
 | | sentence-transformers | 3.3+ | Embedding model |
-| | PyTorch (CPU) | — | ML runtime |
 | **Database** | PostgreSQL | 16 | Primary database |
 | | PostGIS | 3.4 | Geospatial extension |
 | | pgvector | 0.3+ | Vector similarity search |
@@ -548,19 +544,6 @@ For detailed setup instructions, see [AWS-DEPLOY.md](./AWS-DEPLOY.md).
 
 <br>
 
-## 🗺️ Roadmap
-
-- [ ] Add comprehensive E2E tests (Playwright)
-- [ ] Implement Elasticsearch for advanced station search
-- [ ] Add push notifications (web + mobile)
-- [ ] Build station availability prediction model
-- [ ] Multi-language support (Hindi, Malayalam)
-- [ ] Performance monitoring with OpenTelemetry
-- [ ] Add station photos and reviews moderation
-- [ ] Implement wallet top-up with UPI
-- [ ] Add trip sharing and social features
-- [ ] Mobile app (React Native)
-
 <br>
 
 ## 🤝 Contributing
@@ -587,7 +570,7 @@ Contributions are welcome! Please follow these steps:
 
 ## 👤 Author
 
-**Adersh** — [GitHub](https://github.com/your-username)
+**Abhinav** — [GitHub](https://github.com/ABHINAV9496)
 
 ---
 
