@@ -11,17 +11,7 @@ class ChargingSlotSerializer(serializers.ModelSerializer):
         fields = ['id', 'slot_type', 'status', 'available', 'rate_per_kwh', 'off_peak_rate']
 
     def get_available(self, obj):
-        if obj.status == 'FAULT':
-            return False
-        from django.utils import timezone
-        from bookings.models import Booking
-        now = timezone.now()
-        return not Booking.objects.filter(
-            slot=obj,
-            status__in=['CONFIRMED', 'IN_PROGRESS'],
-            start_time__lte=now,
-            end_time__gt=now,
-        ).exists()
+        return obj.status != 'FAULT'
 
 
 class ChargingStationSerializer(serializers.ModelSerializer):

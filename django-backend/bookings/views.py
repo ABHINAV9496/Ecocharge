@@ -120,8 +120,8 @@ class CreateBookingView(APIView):
         except ChargingSlot.DoesNotExist:
             return Response({'error': 'Slot not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        if slot.status != 'AVAILABLE':
-            return Response({'error': 'Slot is not available'}, status=status.HTTP_400_BAD_REQUEST)
+        if slot.status == 'FAULT':
+            return Response({'error': 'Slot is offline due to a fault'}, status=status.HTTP_400_BAD_REQUEST)
 
         if start_time:
             from django.utils import timezone
@@ -151,8 +151,8 @@ class CreateBookingView(APIView):
         try:
             with transaction.atomic():
                 slot = ChargingSlot.objects.select_for_update().get(pk=slot.pk)
-                if slot.status != 'AVAILABLE':
-                    return Response({'error': 'Slot was just booked'}, status=status.HTTP_400_BAD_REQUEST)
+                if slot.status == 'FAULT':
+                    return Response({'error': 'Slot is offline due to a fault'}, status=status.HTTP_400_BAD_REQUEST)
 
                 if start_time and end_time:
                     from dateutil import parser

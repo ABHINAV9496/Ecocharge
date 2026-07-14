@@ -345,7 +345,7 @@ export default function StationOwnerDashboard() {
           if (stationsWithSlots.length === 0) return null
           var occData = stationsWithSlots.map(function (s) {
             var total = s.slots.length
-            var occupied = s.slots.filter(function (sl) { return sl.status === 'OCCUPIED' || sl.status === 'FAULT' }).length
+            var occupied = s.slots.filter(function (sl) { return sl.status === 'FAULT' }).length
             return { name: s.name.length > 12 ? s.name.slice(0, 12) + '...' : s.name, occupancy: Math.round((occupied / total) * 100) }
           })
           return (
@@ -411,8 +411,7 @@ export default function StationOwnerDashboard() {
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
             {stations.map(function (station) {
               var slots = station.slots || []
-              var availableSlots = slots.filter(function (s) { return s.available !== undefined ? s.available : s.status === 'AVAILABLE' }).length
-              var occupiedSlots = slots.filter(function (s) { return s.status === 'OCCUPIED' }).length
+              var availableSlots = slots.filter(function (s) { return s.status !== 'FAULT' }).length
               var faultSlots = slots.filter(function (s) { return s.status === 'FAULT' }).length
 
               return (
@@ -429,9 +428,8 @@ export default function StationOwnerDashboard() {
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{station.address}</p>
                       {slots.length > 0 && (
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] font-medium text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">{availableSlots} Available</span>
-                          {occupiedSlots > 0 && <span className="text-[10px] font-medium text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">{occupiedSlots} Occupied</span>}
-                          {faultSlots > 0 && <span className="text-[10px] font-medium text-red-500 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded">{faultSlots} Fault</span>}
+                           <span className="text-[10px] font-medium text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">{availableSlots} Available</span>
+                           {faultSlots > 0 && <span className="text-[10px] font-medium text-red-500 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded">{faultSlots} Fault</span>}
                         </div>
                       )}
                     </div>

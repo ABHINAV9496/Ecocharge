@@ -149,8 +149,7 @@ function StationTable({ stations, loading, onEdit, onDelete }) {
         var slots = st.slots || []
         var slotSummary = {}
         slots.forEach(function (s) { var label = SLOT_TYPE_LABELS[s.slot_type] || s.slot_type; slotSummary[label] = (slotSummary[label] || 0) + 1 })
-        var availCount = slots.filter(function (s) { return s.available !== undefined ? s.available : s.status === 'AVAILABLE' }).length
-        var occCount = slots.filter(function (s) { return s.status === 'OCCUPIED' }).length
+        var availCount = slots.filter(function (s) { return s.status !== 'FAULT' }).length
         var faultCount = slots.filter(function (s) { return s.status === 'FAULT' }).length
         var isExpanded = expandedId === st.id
         var reviews = reviewsData[st.id]
@@ -168,7 +167,6 @@ function StationTable({ stations, loading, onEdit, onDelete }) {
                 {slots.length > 0 && (
                   <div className="flex items-center gap-1.5 mt-1">
                     <span className="text-[10px] font-medium text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">{availCount} Available</span>
-                    {occCount > 0 && <span className="text-[10px] font-medium text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">{occCount} Occupied</span>}
                     {faultCount > 0 && <span className="text-[10px] font-medium text-red-500 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded">{faultCount} Fault</span>}
                   </div>
                 )}

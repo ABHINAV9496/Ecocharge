@@ -32,9 +32,9 @@ class CreateBookingSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         slot = attrs['slot']
-        if slot.status != 'AVAILABLE':
+        if slot.status == 'FAULT':
             raise serializers.ValidationError(
-                {'slot': 'This slot is not available for booking'}
+                {'slot': 'This slot is offline due to a fault'}
             )
         start_time = attrs['start_time']
         end_time = attrs.get('end_time')
