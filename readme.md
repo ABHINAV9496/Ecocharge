@@ -25,9 +25,6 @@
 </p>
 
 <br>
-=======
->>>>>>> 803c97eb6a1b54bde2185bf2b769ed9b90748c9b
-
 
 ## 📑 Table of Contents
 
