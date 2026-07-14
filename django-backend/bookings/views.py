@@ -11,7 +11,6 @@ from rest_framework.views import APIView
 from events.helpers import send_slot_update
 from notifications.helpers import create_notification
 from stations.models import ChargingSlot, ChargingStation
-
 from vehicles.models import VehicleProfile
 
 from .models import Booking
@@ -135,6 +134,7 @@ class CreateBookingView(APIView):
 
         if not end_time and start_time:
             from datetime import timedelta
+
             from dateutil import parser
             st = parser.parse(start_time) if isinstance(start_time, str) else start_time
             end_time = (st + timedelta(hours=1)).isoformat()

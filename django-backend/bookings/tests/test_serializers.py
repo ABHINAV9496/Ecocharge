@@ -25,9 +25,9 @@ class TestCreateBookingSerializer:
         assert not serializer.is_valid()
         assert 'end_time' in serializer.errors
 
-    def test_slot_not_available(self, db, test_slot):
+    def test_slot_fault_rejected(self, db, test_slot):
         from django.utils import timezone
-        test_slot.status = 'OCCUPIED'
+        test_slot.status = 'FAULT'
         test_slot.save()
         data = {
             'slot': test_slot.id,

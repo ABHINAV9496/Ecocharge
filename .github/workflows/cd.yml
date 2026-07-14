@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   COMPOSE_FILE: docker-compose.prod.yml
   GH_USERNAME: ${{ github.repository_owner }}
@@ -20,7 +24,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_PAT }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build production Docker images
         run: docker compose build

@@ -1,6 +1,7 @@
 import os
-from django.db import migrations, models
+
 from django.conf import settings
+from django.db import migrations, models
 
 
 def link_builtin_images(apps, schema_editor):
