@@ -4,6 +4,7 @@ import { FiUser, FiTruck, FiBatteryCharging, FiCalendar, FiX, FiBarChart2, FiMap
 import { updateProfile } from '../../api/auth'
 import { getBookings, cancelBooking, startCharging, completeCharging } from '../../api/bookings'
 import { getTrips } from '../../api/trips'
+import { getFavorites } from '../../api/stations'
 import { formatCurrency, getSlotTypeColor } from '../../utils/formatters'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../context/AuthContext'
@@ -32,6 +33,7 @@ export default function DriverDashboard() {
   var [form, setForm] = useState({})
   var [loading, setLoading] = useState(true)
   var [trips, setTrips] = useState([])
+  var [favorites, setFavorites] = useState([])
 
   var navigate = useNavigate()
   var showToast = useToast()
@@ -55,6 +57,7 @@ export default function DriverDashboard() {
       var results = await Promise.allSettled([
         getBookings(),
         getTrips(),
+        getFavorites(),
       ])
 
       if (results[0].status === 'fulfilled') {
@@ -66,6 +69,10 @@ export default function DriverDashboard() {
 
       if (results[1].status === 'fulfilled') {
         setTrips(results[1].value.data || [])
+      }
+
+      if (results[2].status === 'fulfilled') {
+        setFavorites(results[2].value.data || [])
       }
 
       setLoading(false)
@@ -404,10 +411,50 @@ export default function DriverDashboard() {
             )}
           </div>
 
-          {/* RIGHT COLUMN: Payments + Weather */}
+          {/* RIGHT COLUMN: Payments + Weather + Favorites */}
           <div className="space-y-6">
             <PaymentHistoryCard />
             <CurrentWeatherWidget />
+
+            {/* Favorite Stations */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <FiMap className="w-4 h-4 text-emerald-500" />
+                  Favorite Stations
+                </h2>
+                {favorites.length > 0 && (
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">{favorites.length} saved</span>
+                )}
+              </div>
+              {favorites.length === 0 ? (
+                <div className="text-center py-4">
+                  <FiMap className="w-6 h-6 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500">No favorites yet</p>
+                  <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-0.5">Tap the heart icon on any station to save it</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {favorites.slice(0, 5).map(function (fav) {
+                    return (
+                      <button key={fav.id} onClick={function () { navigate('/stations/' + fav.station) }}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left">
+                        <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg flex items-center justify-center shrink-0">
+                          <FiMap className="w-3.5 h-3.5 text-emerald-500" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-gray-900 dark:text-white truncate">{fav.station_name || 'Station'}</p>
+                          <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">{fav.station_address || ''}</p>
+                        </div>
+                      </button>
+                    )
+                  })}
+                  {favorites.length > 5 && (
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center pt-1">+{favorites.length - 5} more</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

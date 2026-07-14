@@ -336,6 +336,7 @@ export default function TripPlanner() {
       })
       setSaved(true)
       showToast('Trip saved successfully', 'success')
+      navigate('/trips')
     } catch (e) { console.error('Save trip error:', e); setError('Failed to save trip.') }
     setSaving(false)
   }
