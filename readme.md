@@ -17,7 +17,6 @@
   <img src="https://img.shields.io/badge/GitHub_Actions-CI%2FCD-2088FF?style=for-the-badge&logo=githubactions&logoColor=white" alt="GitHub Actions">
 </p>
 
-<<<<<<< HEAD
 <p align="center">
   <a href="https://ecocharge-nine.vercel.app" target="_blank">
     <img src="https://img.shields.io/badge/Live_Demo-Visit-orange?style=for-the-badge&logo=vercel&logoColor=white" alt="Live Demo">
