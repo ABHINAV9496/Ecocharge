@@ -4,9 +4,24 @@ from .models import ChargingSlot, ChargingStation, MaintenanceSchedule, StationR
 
 
 class ChargingSlotSerializer(serializers.ModelSerializer):
+    available = serializers.SerializerMethodField()
+
     class Meta:
         model = ChargingSlot
-        fields = ['id', 'slot_type', 'status', 'rate_per_kwh', 'off_peak_rate']
+        fields = ['id', 'slot_type', 'status', 'available', 'rate_per_kwh', 'off_peak_rate']
+
+    def get_available(self, obj):
+        if obj.status == 'FAULT':
+            return False
+        from django.utils import timezone
+        from bookings.models import Booking
+        now = timezone.now()
+        return not Booking.objects.filter(
+            slot=obj,
+            status__in=['CONFIRMED', 'IN_PROGRESS'],
+            start_time__lte=now,
+            end_time__gt=now,
+        ).exists()
 
 
 class ChargingStationSerializer(serializers.ModelSerializer):

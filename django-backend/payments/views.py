@@ -169,11 +169,7 @@ class VerifyPaymentView(APIView):
             booking.status = 'CONFIRMED'
             booking.save(update_fields=['status'])
 
-            slot = booking.slot
-            slot.status = 'OCCUPIED'
-            slot.save(update_fields=['status'])
-
-            send_slot_update(slot.station.id)
+            send_slot_update(booking.slot.station.id)
 
         create_notification(
             user=request.user,
@@ -235,14 +231,11 @@ class CapturePaymentView(APIView):
             payment.save(update_fields=['status', 'captured_at'])
 
             booking = payment.booking
-            slot = booking.slot
-            slot.status = 'AVAILABLE'
-            slot.save(update_fields=['status'])
 
             booking.status = 'COMPLETED'
             booking.save(update_fields=['status'])
 
-            send_slot_update(slot.station.id)
+            send_slot_update(booking.slot.station.id)
 
         create_notification(
             user=request.user,

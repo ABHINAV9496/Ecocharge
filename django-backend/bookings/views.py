@@ -237,14 +237,10 @@ class BookingDetailView(APIView):
 
         try:
             with transaction.atomic():
-                slot = booking.slot
-                slot.status = 'AVAILABLE'
-                slot.save()
-
                 booking.status = 'CANCELLED'
                 booking.save()
 
-            send_slot_update(slot.station.id)
+            send_slot_update(booking.slot.station.id)
         except Exception as e:
             return Response(
                 {'error': str(e)},
@@ -301,11 +297,7 @@ class BookingStartView(APIView):
             booking.status = 'IN_PROGRESS'
             booking.save()
 
-            slot = booking.slot
-            slot.status = 'OCCUPIED'
-            slot.save(update_fields=['status'])
-
-            send_slot_update(slot.station.id)
+            send_slot_update(booking.slot.station.id)
 
         create_notification(
             user=request.user,
@@ -335,14 +327,10 @@ class BookingCompleteView(APIView):
             return Response({'error': 'Booking must be IN_PROGRESS to complete charging'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            slot = booking.slot
-            slot.status = 'AVAILABLE'
-            slot.save()
-
             booking.status = 'COMPLETED'
             booking.save()
 
-            send_slot_update(slot.station.id)
+            send_slot_update(booking.slot.station.id)
 
         try:
             from payments.models import Payment
@@ -389,14 +377,10 @@ class BookingOwnerCompleteView(APIView):
             return Response({'error': 'Booking is not in an active state'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            slot = booking.slot
-            slot.status = 'AVAILABLE'
-            slot.save()
-
             booking.status = 'COMPLETED'
             booking.save()
 
-            send_slot_update(slot.station.id)
+            send_slot_update(booking.slot.station.id)
 
         create_notification(
             user=booking.driver,
@@ -426,14 +410,10 @@ class BookingOwnerNoShowView(APIView):
             return Response({'error': 'Only CONFIRMED bookings can be marked as no show'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            slot = booking.slot
-            slot.status = 'AVAILABLE'
-            slot.save()
-
-            booking.status = 'CANCELLED'
+            booking.status = 'COMPLETED'
             booking.save()
 
-            send_slot_update(slot.station.id)
+            send_slot_update(booking.slot.station.id)
 
         create_notification(
             user=booking.driver,

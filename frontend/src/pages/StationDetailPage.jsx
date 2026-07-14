@@ -355,8 +355,8 @@ export default function StationDetailPage() {
                         <h3 className="text-xs font-medium text-gray-400 dark:text-gray-500 mb-2 uppercase tracking-wider">{SLOT_TYPE_LABELS[groupType] || groupType}</h3>
                         <div className="space-y-2">
                           {groupSlots.map(function (slot) {
-                            var statusColor = { AVAILABLE: 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-900/20', OCCUPIED: 'border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20', OUT_OF_SERVICE: 'border-red-200 dark:border-red-800 bg-red-50/80 dark:bg-red-900/20' }[slot.status] || 'border-gray-200 dark:border-gray-700'
-                            var statusBadge = { AVAILABLE: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400', OCCUPIED: 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400', OUT_OF_SERVICE: 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400' }[slot.status] || 'bg-gray-100 dark:bg-gray-700 text-gray-500'
+                            var statusColor = slot.available ? 'border-emerald-200 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-900/20' : slot.status === 'FAULT' ? 'border-red-200 dark:border-red-800 bg-red-50/80 dark:bg-red-900/20' : 'border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20'
+                            var statusBadge = slot.available ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400' : slot.status === 'FAULT' ? 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400'
                             var estCost = estimateCost(slot, selectedVehicle, durationHours)
                             return (
                               <div key={slot.id} className={'p-3.5 border rounded-xl transition-all ' + statusColor}>
@@ -364,17 +364,17 @@ export default function StationDetailPage() {
                                   <div className="flex items-center gap-2">
                                     <span className={'px-2 py-0.5 text-xs font-medium rounded-full ' + getSlotTypeColor(slot.slot_type)}>{SLOT_TYPE_LABELS[slot.slot_type] || slot.slot_type}</span>
                                   </div>
-                                  <span className={'px-2 py-0.5 text-xs font-medium rounded-full ' + statusBadge}>{slot.status === 'AVAILABLE' ? 'Available' : slot.status === 'OCCUPIED' ? 'In Use' : 'Offline'}</span>
+                                   <span className={'px-2 py-0.5 text-xs font-medium rounded-full ' + statusBadge}>{slot.available ? 'Available' : slot.status === 'FAULT' ? 'Offline' : 'In Use'}</span>
                                 </div>
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
                                     <span className="flex items-center gap-1"><FiDollarSign className="w-3 h-3" /> ₹{slot.rate_per_kwh}/kWh</span>
                                     {slot.off_peak_rate && <span className="flex items-center gap-1"><FiClock className="w-3 h-3" /> Off: ₹{slot.off_peak_rate}</span>}
-                                    {slot.status === 'AVAILABLE' && selectedVehicle && (
+                                    {slot.available && selectedVehicle && (
                                       <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium"><FiZap className="w-3 h-3" /> Est. ₹{estCost}</span>
                                     )}
                                   </div>
-                                  {slot.status === 'AVAILABLE' && user && (
+                                  {slot.available && user && (
                                     <button onClick={function () { handleBook(slot) }} disabled={booking === slot.id}
                                       className={'px-4 py-1.5 text-xs font-medium rounded-lg transition-all ' + (booking === slot.id ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-lg hover:from-emerald-600 hover:to-emerald-700')}
                                     >{booking === slot.id ? 'Booking...' : 'Book Now'}</button>
