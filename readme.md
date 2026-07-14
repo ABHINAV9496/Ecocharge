@@ -19,11 +19,6 @@
 
 <br>
 
-<!-- TODO: add screenshot or demo GIF -->
-<p align="center">
-  <em>📸 Screenshot / Demo GIF coming soon</em>
-</p>
-
 <br>
 
 ## 📑 Table of Contents
