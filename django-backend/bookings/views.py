@@ -133,6 +133,12 @@ class CreateBookingView(APIView):
             except Exception:
                 return Response({'error': 'Invalid start_time format'}, status=status.HTTP_400_BAD_REQUEST)
 
+        if not end_time and start_time:
+            from datetime import timedelta
+            from dateutil import parser
+            st = parser.parse(start_time) if isinstance(start_time, str) else start_time
+            end_time = (st + timedelta(hours=1)).isoformat()
+
         vehicle = None
         if vehicle_id:
             try:

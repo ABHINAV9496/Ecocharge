@@ -227,7 +227,7 @@ export default function StationDetailPage() {
     return function () { onStationUpdate(null) }
   }, [id, stationConnected, subscribeStations, onStationUpdate])
 
-  var availableCount = slots.filter(function (s) { return s.status === 'AVAILABLE' }).length
+  var availableCount = slots.filter(function (s) { return s.available }).length
   var slotGroups = {}
   slots.forEach(function (s) {
     var t = s.slot_type || 'AC'
