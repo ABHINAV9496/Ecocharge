@@ -542,19 +542,6 @@ For detailed setup instructions, see [AWS-DEPLOY.md](./AWS-DEPLOY.md).
 
 <br>
 
-## 🗺️ Roadmap
-
-- [ ] Add comprehensive E2E tests (Playwright)
-- [ ] Implement Elasticsearch for advanced station search
-- [ ] Add push notifications (web + mobile)
-- [ ] Build station availability prediction model
-- [ ] Multi-language support (Hindi, Malayalam)
-- [ ] Performance monitoring with OpenTelemetry
-- [ ] Add station photos and reviews moderation
-- [ ] Implement wallet top-up with UPI
-- [ ] Add trip sharing and social features
-- [ ] Mobile app (React Native)
-
 <br>
 
 ## 🤝 Contributing
@@ -581,7 +568,7 @@ Contributions are welcome! Please follow these steps:
 
 ## 👤 Author
 
-**Adersh** — [GitHub](https://github.com/your-username)
+**Abhinav** — [GitHub](https://github.com/ABHINAV9496)
 
 ---
 
