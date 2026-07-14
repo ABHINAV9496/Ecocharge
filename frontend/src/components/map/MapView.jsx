@@ -335,8 +335,8 @@ export default function MapView({ routePlan }) {
         {routePlan && routePlan.origin && <Marker position={[routePlan.origin.lat, routePlan.origin.lng]} icon={createRouteMarkerIcon('#10b981', 'S')} />}
         {routePlan && routePlan.destination && <Marker position={[routePlan.destination.lat, routePlan.destination.lng]} icon={createRouteMarkerIcon('#ef4444', 'E')} />}
         {routePlan && routePlan.stops && routePlan.stops.map(function (stop, i) {
-          var stopLat = stop.projected_lat || stop.lat
-          var stopLng = stop.projected_lng || stop.lng
+          var stopLat = stop.lat
+          var stopLng = stop.lng
           if (!stopLat || !stopLng) return null
           return <Marker key={'stop-' + i} position={[stopLat, stopLng]} icon={createStopIcon(i + 1)}>
             <Popup><div className="min-w-[200px]">

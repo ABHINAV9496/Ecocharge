@@ -404,7 +404,7 @@ class EnergyAwareRoutePlanner:
         best_d = float('inf')
         best_i = 0
         for i, (rlat, rlng) in enumerate(route_coords):
-            d = (rlat - lat) ** 2 + (rlng - lng) ** 2
+            d = _haversine_km(lat, lng, rlat, rlng)
             if d < best_d:
                 best_d = d
                 best_i = i
