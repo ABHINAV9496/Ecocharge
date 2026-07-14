@@ -17,9 +17,7 @@
   <img src="https://img.shields.io/badge/GitHub_Actions-CI%2FCD-2088FF?style=for-the-badge&logo=githubactions&logoColor=white" alt="GitHub Actions">
 </p>
 
-<br>
 
-<br>
 
 ## 📑 Table of Contents
 
@@ -89,7 +87,6 @@
 | **AI Service** | FastAPI | 0.115 | Async API framework |
 | | Groq SDK | 0.12+ | LLM API client |
 | | sentence-transformers | 3.3+ | Embedding model |
-| | PyTorch (CPU) | — | ML runtime |
 | **Database** | PostgreSQL | 16 | Primary database |
 | | PostGIS | 3.4 | Geospatial extension |
 | | pgvector | 0.3+ | Vector similarity search |
