@@ -2,11 +2,10 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from bookings.models import Booking
-from stations.models import ChargingSlot
 
 
 class Command(BaseCommand):
-    help = 'Clean stale bookings and reset stuck OCCUPIED slot statuses'
+    help = 'Clean stale bookings and mark them as completed'
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -40,19 +39,3 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS(f'Marked {updated} stale booking(s) as COMPLETED.'))
         else:
             self.stdout.write(self.style.SUCCESS('No stale bookings found.'))
-
-        stuck_slots = ChargingSlot.objects.filter(status='OCCUPIED')
-        stuck_count = stuck_slots.count()
-
-        if stuck_count > 0:
-            if dry_run:
-                self.stdout.write(self.style.WARNING(
-                    f'Dry run: {stuck_count} stuck OCCUPIED slot(s) would be reset to AVAILABLE:'
-                ))
-                for slot in stuck_slots.select_related('station'):
-                    self.stdout.write(f'  Slot #{slot.id} ({slot.slot_type}) at {slot.station.name}')
-            else:
-                updated = stuck_slots.update(status='AVAILABLE')
-                self.stdout.write(self.style.SUCCESS(f'Reset {updated} stuck OCCUPIED slot(s) to AVAILABLE.'))
-        else:
-            self.stdout.write(self.style.SUCCESS('No stuck OCCUPIED slots found.'))

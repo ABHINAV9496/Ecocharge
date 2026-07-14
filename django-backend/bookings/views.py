@@ -119,8 +119,8 @@ class CreateBookingView(APIView):
         except ChargingSlot.DoesNotExist:
             return Response({'error': 'Slot not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        if slot.status == 'FAULT':
-            return Response({'error': 'Slot is offline due to a fault'}, status=status.HTTP_400_BAD_REQUEST)
+        if slot.status != 'AVAILABLE':
+            return Response({'error': 'Slot is not available'}, status=status.HTTP_400_BAD_REQUEST)
 
         if start_time:
             from django.utils import timezone
@@ -131,13 +131,6 @@ class CreateBookingView(APIView):
                     return Response({'error': 'Cannot book in the past'}, status=status.HTTP_400_BAD_REQUEST)
             except Exception:
                 return Response({'error': 'Invalid start_time format'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if not end_time and start_time:
-            from datetime import timedelta
-
-            from dateutil import parser
-            st = parser.parse(start_time) if isinstance(start_time, str) else start_time
-            end_time = (st + timedelta(hours=1)).isoformat()
 
         vehicle = None
         if vehicle_id:
@@ -151,8 +144,8 @@ class CreateBookingView(APIView):
         try:
             with transaction.atomic():
                 slot = ChargingSlot.objects.select_for_update().get(pk=slot.pk)
-                if slot.status == 'FAULT':
-                    return Response({'error': 'Slot is offline due to a fault'}, status=status.HTTP_400_BAD_REQUEST)
+                if slot.status != 'AVAILABLE':
+                    return Response({'error': 'Slot was just booked'}, status=status.HTTP_400_BAD_REQUEST)
 
                 if start_time and end_time:
                     from dateutil import parser
@@ -243,10 +236,14 @@ class BookingDetailView(APIView):
 
         try:
             with transaction.atomic():
+                slot = booking.slot
+                slot.status = 'AVAILABLE'
+                slot.save()
+
                 booking.status = 'CANCELLED'
                 booking.save()
 
-            send_slot_update(booking.slot.station.id)
+            send_slot_update(slot.station.id)
         except Exception as e:
             return Response(
                 {'error': str(e)},
@@ -303,7 +300,11 @@ class BookingStartView(APIView):
             booking.status = 'IN_PROGRESS'
             booking.save()
 
-            send_slot_update(booking.slot.station.id)
+            slot = booking.slot
+            slot.status = 'OCCUPIED'
+            slot.save(update_fields=['status'])
+
+            send_slot_update(slot.station.id)
 
         create_notification(
             user=request.user,
@@ -333,10 +334,14 @@ class BookingCompleteView(APIView):
             return Response({'error': 'Booking must be IN_PROGRESS to complete charging'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
+            slot = booking.slot
+            slot.status = 'AVAILABLE'
+            slot.save()
+
             booking.status = 'COMPLETED'
             booking.save()
 
-            send_slot_update(booking.slot.station.id)
+            send_slot_update(slot.station.id)
 
         try:
             from payments.models import Payment
@@ -383,10 +388,14 @@ class BookingOwnerCompleteView(APIView):
             return Response({'error': 'Booking is not in an active state'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
+            slot = booking.slot
+            slot.status = 'AVAILABLE'
+            slot.save()
+
             booking.status = 'COMPLETED'
             booking.save()
 
-            send_slot_update(booking.slot.station.id)
+            send_slot_update(slot.station.id)
 
         create_notification(
             user=booking.driver,
@@ -416,10 +425,14 @@ class BookingOwnerNoShowView(APIView):
             return Response({'error': 'Only CONFIRMED bookings can be marked as no show'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
-            booking.status = 'COMPLETED'
+            slot = booking.slot
+            slot.status = 'AVAILABLE'
+            slot.save()
+
+            booking.status = 'CANCELLED'
             booking.save()
 
-            send_slot_update(booking.slot.station.id)
+            send_slot_update(slot.station.id)
 
         create_notification(
             user=booking.driver,

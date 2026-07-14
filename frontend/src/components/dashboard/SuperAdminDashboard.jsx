@@ -184,7 +184,8 @@ export default function SuperAdminDashboard() {
             ) : (
               stations.map(function (station) {
                 var slots = station.slots || []
-                var availSlots = slots.filter(function (s) { return s.status !== 'FAULT' }).length
+                var availSlots = slots.filter(function (s) { return s.status === 'AVAILABLE' }).length
+                var occSlots = slots.filter(function (s) { return s.status === 'OCCUPIED' }).length
                 var faultSlots = slots.filter(function (s) { return s.status === 'FAULT' }).length
                 var totalSlots = slots.length || 0
 
@@ -196,6 +197,7 @@ export default function SuperAdminDashboard() {
                       {totalSlots > 0 && (
                         <div className="flex items-center gap-1 mt-0.5">
                           <span className="text-[10px] font-medium text-emerald-500">{availSlots} avail</span>
+                          {occSlots > 0 && <span className="text-[10px] font-medium text-amber-500">· {occSlots} occ</span>}
                           {faultSlots > 0 && <span className="text-[10px] font-medium text-red-500">· {faultSlots} fault</span>}
                         </div>
                       )}

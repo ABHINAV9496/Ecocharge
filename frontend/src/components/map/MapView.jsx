@@ -90,7 +90,7 @@ var StationMarker = memo(function ({ station }) {
           {station.slots && station.slots.length > 3 && <span className="text-[10px] text-gray-400 dark:text-gray-500">+{station.slots.length - 3} more</span>}
         </div>
         <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 mb-2.5">
-          <span className="flex items-center gap-1"><FiZap className="w-3 h-3" />{station.slots ? station.slots.filter(function (s) { return s.status !== 'FAULT' }).length : 0} free</span>
+          <span className="flex items-center gap-1"><FiZap className="w-3 h-3" />{station.slots ? station.slots.filter(function (s) { return s.status === 'AVAILABLE' }).length : 0} free</span>
         </div>
         <button onClick={function () { navigate('/stations/' + station.id + '?book=true') }} className="w-full py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-1"><FiBookOpen className="w-3 h-3" /> Book Now</button>
       </div></Popup>
@@ -226,8 +226,8 @@ export default function MapView({ routePlan }) {
   var filteredStations = useMemo(function () {
     return stations.filter(function (station) {
       var passesStatus = true
-      if (statusFilter === 'available') passesStatus = station.slots && station.slots.some(function (s) { return s.status !== 'FAULT' })
-      else if (statusFilter === 'occupied') passesStatus = station.slots && station.slots.some(function (s) { return s.status === 'FAULT' })
+      if (statusFilter === 'available') passesStatus = station.slots && station.slots.some(function (s) { return s.status === 'AVAILABLE' })
+      else if (statusFilter === 'occupied') passesStatus = station.slots && station.slots.some(function (s) { return s.status === 'OCCUPIED' })
       var passesSlotType = true
       if (slotTypeFilter.length > 0 && station.slots) { passesSlotType = station.slots.some(function (s) { return slotTypeFilter.indexOf(s.slot_type) !== -1 }) }
       return passesStatus && passesSlotType

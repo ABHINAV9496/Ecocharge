@@ -4,14 +4,9 @@ from .models import ChargingSlot, ChargingStation, MaintenanceSchedule, StationR
 
 
 class ChargingSlotSerializer(serializers.ModelSerializer):
-    available = serializers.SerializerMethodField()
-
     class Meta:
         model = ChargingSlot
-        fields = ['id', 'slot_type', 'status', 'available', 'rate_per_kwh', 'off_peak_rate']
-
-    def get_available(self, obj):
-        return obj.status != 'FAULT'
+        fields = ['id', 'slot_type', 'status', 'rate_per_kwh', 'off_peak_rate']
 
 
 class ChargingStationSerializer(serializers.ModelSerializer):

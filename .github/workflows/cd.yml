@@ -79,9 +79,6 @@ jobs:
           echo "Running database migrations..."
           docker compose -f docker-compose.prod.yml exec -T django python manage.py migrate
 
-          echo "Cleaning stale bookings..."
-          docker compose -f docker-compose.prod.yml exec -T django python manage.py clean_stale_bookings
-
           echo "Collecting static files..."
           docker compose -f docker-compose.prod.yml exec -T django python manage.py collectstatic --noinput
 
