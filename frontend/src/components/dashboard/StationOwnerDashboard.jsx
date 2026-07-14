@@ -411,7 +411,7 @@ export default function StationOwnerDashboard() {
           <div className="divide-y divide-gray-200 dark:divide-gray-700">
             {stations.map(function (station) {
               var slots = station.slots || []
-              var availableSlots = slots.filter(function (s) { return s.status === 'AVAILABLE' }).length
+              var availableSlots = slots.filter(function (s) { return s.available !== undefined ? s.available : s.status === 'AVAILABLE' }).length
               var occupiedSlots = slots.filter(function (s) { return s.status === 'OCCUPIED' }).length
               var faultSlots = slots.filter(function (s) { return s.status === 'FAULT' }).length
 

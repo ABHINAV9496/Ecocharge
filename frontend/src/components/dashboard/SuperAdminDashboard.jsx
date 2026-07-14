@@ -184,7 +184,7 @@ export default function SuperAdminDashboard() {
             ) : (
               stations.map(function (station) {
                 var slots = station.slots || []
-                var availSlots = slots.filter(function (s) { return s.status === 'AVAILABLE' }).length
+                var availSlots = slots.filter(function (s) { return s.available !== undefined ? s.available : s.status === 'AVAILABLE' }).length
                 var occSlots = slots.filter(function (s) { return s.status === 'OCCUPIED' }).length
                 var faultSlots = slots.filter(function (s) { return s.status === 'FAULT' }).length
                 var totalSlots = slots.length || 0

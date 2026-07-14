@@ -149,7 +149,7 @@ function StationTable({ stations, loading, onEdit, onDelete }) {
         var slots = st.slots || []
         var slotSummary = {}
         slots.forEach(function (s) { var label = SLOT_TYPE_LABELS[s.slot_type] || s.slot_type; slotSummary[label] = (slotSummary[label] || 0) + 1 })
-        var availCount = slots.filter(function (s) { return s.status === 'AVAILABLE' }).length
+        var availCount = slots.filter(function (s) { return s.available !== undefined ? s.available : s.status === 'AVAILABLE' }).length
         var occCount = slots.filter(function (s) { return s.status === 'OCCUPIED' }).length
         var faultCount = slots.filter(function (s) { return s.status === 'FAULT' }).length
         var isExpanded = expandedId === st.id
